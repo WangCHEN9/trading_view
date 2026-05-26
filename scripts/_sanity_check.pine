@@ -1,0 +1,62 @@
+//@version=6
+strategy("Sanity Check  [delete after testing]", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=10)
+
+// Minimal smoke test: only the syntax features used by all three strategies.
+// If THIS compiles, Pine v6 syntax features in your TradingView are fine.
+
+// 1) Inputs (all types we use)
+i_int    = input.int  (10,   "Int input",       group="Test")
+i_float  = input.float(1.5,  "Float input",     group="Test")
+i_bool   = input.bool (true, "Bool input",      group="Test")
+i_string = input.string("A", "String input",  options=["A","B","C"], group="Test")
+
+// 2) Indicators including destructured MACD and ATR
+ma                                  = ta.sma(close, i_int)
+[macd_line, signal_line, macd_hist] = ta.macd(close, 12, 26, 9)
+atr                                 = ta.atr(14)
+
+// 3) Stateful function at top level (must NOT be inside an if)
+macd_cross_dn = ta.crossunder(macd_line, signal_line)
+
+// 4) Highest with dynamic length and shifted access
+c_high = ta.highest(close, i_int)[1]
+
+// 5) User-defined function at global scope (must NOT be local)
+f_pass(v, threshold) =>
+    na(v) ? true : v >= threshold
+
+// 6) request.financial smoke test (na-safe)
+f_ni = request.financial(syminfo.tickerid, "NET_INCOME", "TTM", ignore_invalid_symbol=true)
+
+// 7) request.security smoke test (na-safe)
+spy = request.security("AMEX:SPY", timeframe.period, close, ignore_invalid_symbol=true)
+
+// 8) Persistent vars including label
+var float cur_stop   = na
+var bool  flagged    = false
+var label last_label = na
+
+// 9) Reset-before-entry pattern
+in_pos = strategy.position_size > 0
+if not in_pos
+    cur_stop := na
+    flagged  := false
+
+if close > ma and not in_pos
+    strategy.entry("Long", strategy.long)
+    cur_stop := close - atr * i_float
+
+if in_pos
+    strategy.exit("Stop", from_entry="Long", stop=cur_stop)
+
+// 10) Plot with dynamic colour, plotshape with style= (NOT shape=)
+plot(ma, "MA", color=in_pos ? color.lime : color.gray, linewidth=2)
+plotshape(close > ma and not in_pos, title="X",
+     style=shape.triangleup, location=location.belowbar, color=color.lime)
+
+// 11) Label management (delete-then-create)
+if close > ma and not in_pos
+    label.delete(last_label)
+    last_label := label.new(bar_index, low,
+         text="ok  NI:" + str.tostring(nz(f_ni, 0)) + "  SPY:" + str.tostring(nz(spy, 0)),
+         color=color.green, textcolor=color.white)
