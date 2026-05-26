@@ -1,0 +1,219 @@
+//@version=6
+strategy("Weekly Consolidation Breakout  [FinancialWisdomTV]",
+     overlay               = true,
+     default_qty_type      = strategy.percent_of_equity,
+     default_qty_value     = 16,
+     calc_on_every_tick    = false,
+     pyramiding            = 0)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Entry
+i_ma_len      = input.int  (20,   "Trend MA Length (weeks)",   minval=5,   group="Entry Filters")
+i_consol_len  = input.int  (6,    "Min Consolidation Weeks",   minval=4,   group="Entry Filters")
+i_break_min   = input.float(5.0,  "Min Breakout % from prev close",        group="Entry Filters")
+i_break_max   = input.float(20.0, "Max Breakout % from prev close",        group="Entry Filters")
+i_vol_spike   = input.float(30.0, "Min Volume Spike % vs prev week",       group="Entry Filters")
+i_natr_max    = input.float(8.0,  "Max NATR (consolidation threshold)",    group="Entry Filters")
+i_wick_max    = input.float(50.0, "Max Upper Wick % of candle range",      group="Entry Filters")
+
+// Risk
+i_max_stop    = input.float(20.0, "Max Allowed Stop Loss %",               group="Risk Management")
+
+// Fundamentals
+i_use_fund    = input.bool  (true,   "Enable Fundamental Filters",         group="Fundamentals")
+i_fund_period = input.string("TTM",  "Reporting Period",
+     options=["TTM", "FQ", "FY"],                                           group="Fundamentals")
+i_roe_min     = input.float (10.0,  "Min ROE %",                           group="Fundamentals")
+i_roc_min     = input.float (10.0,  "Min ROC %  (Oper. Income / Assets)",  group="Fundamentals")
+i_op_min      = input.float (10.0,  "Min Operating Margin %",              group="Fundamentals")
+i_rev_growth  = input.bool  (true,  "Require Positive Revenue (YoY)",      group="Fundamentals")
+i_ni_growth   = input.bool  (true,  "Require Positive Net Income (YoY)",   group="Fundamentals")
+i_fund_na_ok  = input.bool  (true,  "Pass filter when data unavailable",   group="Fundamentals")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CORE INDICATORS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+ma20                       = ta.sma(close, i_ma_len)
+[macd_line, signal_line, macd_hist] = ta.macd(close, 12, 26, 9)
+natr                       = ta.atr(14) / close * 100
+macd_cross_dn              = ta.crossunder(macd_line, signal_line)  // computed at top level — avoids stateful-function-inside-if bug
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FUNDAMENTAL DATA  (stocks only — na-safe throughout)
+// ROE  = Net Income / Total Equity × 100
+// ROC  = Operating Income / Total Assets × 100  (proxy for ROCE)
+// OPM  = Operating Income / Total Revenue × 100
+// YoY  = compare TTM value to same metric 52 weekly bars ago (≈ 1 year)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+f_net_income  = request.financial(syminfo.tickerid, "NET_INCOME",    i_fund_period, ignore_invalid_symbol=true)
+f_revenue     = request.financial(syminfo.tickerid, "TOTAL_REVENUE", i_fund_period, ignore_invalid_symbol=true)
+f_oper_income = request.financial(syminfo.tickerid, "OPER_INCOME",   i_fund_period, ignore_invalid_symbol=true)
+f_equity      = request.financial(syminfo.tickerid, "TOTAL_EQUITY",  i_fund_period, ignore_invalid_symbol=true)
+f_assets      = request.financial(syminfo.tickerid, "TOTAL_ASSETS",  i_fund_period, ignore_invalid_symbol=true)
+
+// Calculated ratios (na when denominator is zero or missing)
+f_roe = not na(f_net_income)  and not na(f_equity)      and f_equity  > 0 ? f_net_income  / f_equity  * 100 : na
+f_roc = not na(f_oper_income) and not na(f_assets)      and f_assets  > 0 ? f_oper_income / f_assets  * 100 : na
+f_opm = not na(f_oper_income) and not na(f_revenue)     and f_revenue > 0 ? f_oper_income / f_revenue * 100 : na
+
+// YoY growth: current vs 52 weekly bars ago
+f_rev_up = not na(f_revenue)    and not na(f_revenue[52])    ? f_revenue    > f_revenue[52]    : i_fund_na_ok
+f_ni_up  = not na(f_net_income) and not na(f_net_income[52]) ? f_net_income > f_net_income[52] : i_fund_na_ok
+
+// Helper: returns true when metric passes threshold, or when data is missing and na-pass is on
+f_pass(val, threshold) =>
+    na(val) ? i_fund_na_ok : val >= threshold
+
+fund_ok = not i_use_fund or (
+     f_pass(f_roe, i_roe_min) and
+     f_pass(f_roc, i_roc_min) and
+     f_pass(f_opm, i_op_min)  and
+     (not i_rev_growth or f_rev_up) and
+     (not i_ni_growth  or f_ni_up))
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONSOLIDATION BOX
+// Looks at the i_consol_len bars BEFORE the current bar (excluding current).
+// Resistance = highest closing price in that window.
+// Support    = lowest  closing price in that window.
+// Stop level = lower boundary of the middle third (box / 3 above support).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+c_res         = ta.highest(close, i_consol_len)[1]   // prior consolidation high
+c_sup         = ta.lowest (close, i_consol_len)[1]   // prior consolidation low
+c_rng         = c_res - c_sup
+stop_at_entry = c_sup + c_rng / 3                    // lower end of middle third
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENTRY CONDITIONS  (all must be true on the signal bar)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+above_ma     = close > ma20                                           // uptrend filter
+macd_bull    = macd_line > signal_line                                // near-term momentum
+breakout     = close > c_res                                          // closes above resistance
+
+pct_move     = (close - close[1]) / close[1] * 100
+valid_size   = pct_move >= i_break_min and pct_move <= i_break_max   // 5–20 % breakout candle
+
+wick_pct     = (high - low) > 0 ? (high - close) / (high - low) * 100 : 0
+valid_wick   = wick_pct <= i_wick_max                                 // upper wick < 50 %
+
+vol_ok       = volume > volume[1] * (1 + i_vol_spike / 100)          // ≥ 30 % volume spike
+new_10wk_hi  = close >= ta.highest(close, 10)[1]                     // 10-week closing high
+natr_ok      = natr < i_natr_max                                      // low volatility regime
+
+// Stop must be within allowed percentage
+stop_ok      = c_rng > 0 and
+     (close - stop_at_entry) / close * 100 <= i_max_stop
+
+long_signal  = above_ma and macd_bull and breakout and
+     valid_size and valid_wick and vol_ok and
+     new_10wk_hi and natr_ok and stop_ok and fund_ok
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION MANAGEMENT
+//
+// Phase 1 – Initial hard stop:  lower end of middle third of consolidation box.
+// Phase 2 – Raised stop:        MACD crosses below signal → stop raised to the
+//                                low of that crossdown candle (below wick support).
+//                               Stop is only ever moved UP, never down.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var float cur_stop    = na
+var bool  stop_raised = false
+var label last_label  = na
+
+in_pos = strategy.position_size > 0
+
+// ── Reset on flat (must run BEFORE entry block so entry can overwrite) ────────
+if not in_pos
+    cur_stop    := na
+    stop_raised := false
+
+// ── Entry (filled at next bar's open) ─────────────────────────────────────────
+if long_signal and not in_pos
+    strategy.entry("Long", strategy.long)
+    cur_stop    := stop_at_entry
+    stop_raised := false
+
+// ── Stop management (runs every bar while in position) ────────────────────────
+if in_pos
+    if macd_cross_dn
+        new_s = low                              // low of the MACD crossdown candle
+        if na(cur_stop) or new_s > cur_stop
+            cur_stop    := new_s
+            stop_raised := true
+    strategy.exit("Stop", from_entry="Long", stop=cur_stop)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS & VISUALS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Trend MA
+plot(ma20, "20W MA", color=color.blue, linewidth=2)
+
+// Consolidation box (only shown when flat — fades once in a trade)
+plot(not in_pos ? c_res : na, "Resistance",
+     color=color.new(color.silver, 20), style=plot.style_linebr, linewidth=1)
+plot(not in_pos ? c_sup : na, "Support",
+     color=color.new(color.silver, 20), style=plot.style_linebr, linewidth=1)
+plot(not in_pos ? stop_at_entry : na, "Stop Level (pre-entry)",
+     color=color.new(color.red, 50), style=plot.style_linebr, linewidth=1)
+
+// Active stop line (red = initial, orange = raised)
+plot(in_pos ? cur_stop : na, "Stop Loss",
+     color = stop_raised ? color.orange : color.red,
+     style = plot.style_linebr, linewidth = 2)
+
+// Entry arrow
+plotshape(long_signal and not in_pos,
+     title    = "Buy Signal",
+     style    = shape.triangleup,
+     location = location.belowbar,
+     color    = color.lime,
+     size     = size.normal)
+
+// Diamond when stop is raised (MACD crossdown while in trade)
+plotshape(in_pos and macd_cross_dn,
+     title    = "Stop Raised",
+     style    = shape.diamond,
+     location = location.abovebar,
+     color    = color.orange,
+     size     = size.small)
+
+// Background tint while in position
+bgcolor(in_pos ? color.new(color.teal, 90) : na, title="In Position")
+
+// ─── Info Label on signal bar ─────────────────────────────────────────────────
+if long_signal and not in_pos
+    f_str(v) => na(v) ? "n/a" : str.tostring(math.round(v, 1)) + "%"
+    label.delete(last_label)
+    last_label := label.new(bar_index, low,
+         text  = "ENTRY"                                                              +
+                 "\nStop: " + str.tostring(math.round(stop_at_entry, 2))             +
+                 "  SL%: "  + str.tostring(math.round((close - stop_at_entry) / close * 100, 1)) + "%" +
+                 "\nNATR: " + str.tostring(math.round(natr, 1))                      +
+                 "\n── Fundamentals ──"                                               +
+                 "\nROE: "  + f_str(f_roe)  + "  ROC: " + f_str(f_roc)              +
+                 "\nOPM: "  + f_str(f_opm)                                           +
+                 "\nRev↑: " + str.tostring(f_rev_up) + "  NI↑: " + str.tostring(f_ni_up),
+         style = label.style_label_up,
+         color = color.new(color.green, 20),
+         textcolor = color.white,
+         size  = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTES
+// • Designed for the WEEKLY timeframe — backtest and trade on 1W charts only.
+// • Position size defaults to 16 % of equity (Kelly ⅓ fraction).
+// • Fundamental filters use request.financial() — stocks only, data from FactSet.
+//   Toggle off "Enable Fundamental Filters" for crypto / forex / ETFs.
+//   "Pass filter when data unavailable" lets signals through when FactSet has no data.
+// • NATR < 8 acts as the consolidation proxy; tune to your universe.
+// • Entry fills at the OPEN of the following week after the signal bar closes.
+// ═══════════════════════════════════════════════════════════════════════════════
