@@ -1,0 +1,168 @@
+//@version=6
+strategy("Weinstein Stage 4 Breakdown  [SHORT / Weekly]",
+     overlay               = true,
+     default_qty_type      = strategy.percent_of_equity,
+     default_qty_value     = 10,
+     calc_on_every_tick    = false,
+     pyramiding            = 0)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Stan Weinstein — Stage 4 Breakdown Short
+//
+// Book: "Secrets for Profiting in Bull and Bear Markets" (1988).
+// Weinstein's four-stage model:
+//   • Stage 1 — basing area  (sideways under flat MA)
+//   • Stage 2 — advancing    (above rising MA)  ← our other LONG strategy enters here
+//   • Stage 3 — distribution top (sideways above flat/rolling-over MA)
+//   • Stage 4 — declining    (below falling MA) ← THIS STRATEGY
+//
+// Designed for the WEEKLY timeframe.  Mirrors the Consolidation Breakout strategy
+// but on the short side: distribution top → breakdown below support → short.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_ma_len       = input.int  (30,   "Weinstein MA Length (weeks)",     minval=10, group="Entry Filters")
+i_ma_slope_lb  = input.int  (4,    "MA slope lookback (weeks)",       minval=2,  group="Entry Filters")
+i_consol_len   = input.int  (6,    "Min Distribution Weeks",          minval=4,  group="Entry Filters")
+i_break_min    = input.float(3.0,  "Min Breakdown % from prev close",            group="Entry Filters")
+i_break_max    = input.float(20.0, "Max Breakdown % from prev close",            group="Entry Filters")
+i_vol_spike    = input.float(30.0, "Min Volume Spike % vs prev week",            group="Entry Filters")
+i_natr_max     = input.float(8.0,  "Max NATR (distribution threshold)",          group="Entry Filters")
+i_wick_max     = input.float(50.0, "Max Lower Wick % of candle range",           group="Entry Filters")
+
+i_max_stop     = input.float(20.0, "Max Allowed Stop Loss %",         group="Risk Management")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CORE INDICATORS
+// ═══════════════════════════════════════════════════════════════════════════════
+ma30                               = ta.sma(close, i_ma_len)
+ma_falling                         = ma30 <= ma30[i_ma_slope_lb]               // flat or declining
+[macd_line, signal_line, macd_hist] = ta.macd(close, 12, 26, 9)
+natr                               = ta.atr(14) / close * 100
+macd_cross_up                      = ta.crossover(macd_line, signal_line)       // exit trigger
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DISTRIBUTION TOP BOX  (mirror of consolidation: highest close = resistance,
+//                       lowest close = support; breakdown = close < support)
+// Stop level = UPPER boundary of middle third of the box (mirror of long stop).
+// ═══════════════════════════════════════════════════════════════════════════════
+c_res         = ta.highest(close, i_consol_len)[1]
+c_sup         = ta.lowest (close, i_consol_len)[1]
+c_rng         = c_res - c_sup
+stop_at_entry = c_res - c_rng / 3
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENTRY CONDITIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+below_ma       = close < ma30
+ma_bearish     = ma_falling
+breakdown      = close < c_sup
+pct_drop       = (close[1] - close) / close[1] * 100
+valid_size     = pct_drop >= i_break_min and pct_drop <= i_break_max
+
+// Lower wick: how much of the candle is below the close (buying support).
+// We want a SMALL lower wick — full, decisive down candle, like the inverse of
+// the breakout strategy's upper-wick check.
+lower_wick_pct = (high - low) > 0 ? (close - low) / (high - low) * 100 : 0
+valid_wick     = lower_wick_pct <= i_wick_max
+
+vol_ok         = volume > volume[1] * (1 + i_vol_spike / 100)
+new_10wk_lo    = close <= ta.lowest(close, 10)[1]
+natr_ok        = natr < i_natr_max
+macd_bear      = macd_line < signal_line
+
+stop_ok        = c_rng > 0 and
+     (stop_at_entry - close) / close * 100 <= i_max_stop
+
+short_signal   = below_ma and ma_bearish and breakdown and valid_size and
+     valid_wick and vol_ok and new_10wk_lo and natr_ok and macd_bear and stop_ok
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION MANAGEMENT
+//
+// Phase 1 – Initial hard stop: upper end of middle third of distribution box.
+// Phase 2 – Lowered stop:      MACD crosses ABOVE signal → stop lowered to the
+//                              HIGH of that crossup candle (above wick = resistance
+//                              ceiling). Stop only ever moves DOWN, never up.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var float cur_stop      = na
+var bool  stop_lowered  = false
+var label last_label    = na
+
+in_pos = strategy.position_size < 0
+
+if not in_pos
+    cur_stop     := na
+    stop_lowered := false
+
+if short_signal and not in_pos
+    strategy.entry("Short", strategy.short)
+    cur_stop     := stop_at_entry
+    stop_lowered := false
+
+if in_pos
+    if macd_cross_up
+        new_s = high                              // high of the MACD crossup candle
+        if na(cur_stop) or new_s < cur_stop
+            cur_stop     := new_s
+            stop_lowered := true
+    strategy.exit("Cover", from_entry="Short", stop=cur_stop)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════════════════════════════════════════
+plot(ma30, "30W MA", color=ma_falling ? color.red : color.gray, linewidth=2)
+
+plot(not in_pos ? c_res : na, "Distribution High",
+     color=color.new(color.silver, 20), style=plot.style_linebr, linewidth=1)
+plot(not in_pos ? c_sup : na, "Support (to break)",
+     color=color.new(color.silver, 20), style=plot.style_linebr, linewidth=1)
+plot(not in_pos ? stop_at_entry : na, "Stop Level (pre-entry)",
+     color=color.new(color.red, 50), style=plot.style_linebr, linewidth=1)
+
+plot(in_pos ? cur_stop : na, "Stop Loss",
+     color = stop_lowered ? color.orange : color.red,
+     style = plot.style_linebr, linewidth = 2)
+
+plotshape(short_signal and not in_pos,
+     title    = "Sell Signal",
+     style    = shape.triangledown,
+     location = location.abovebar,
+     color    = color.red,
+     size     = size.normal)
+
+plotshape(in_pos and macd_cross_up,
+     title    = "Stop Lowered",
+     style    = shape.diamond,
+     location = location.belowbar,
+     color    = color.orange,
+     size     = size.small)
+
+bgcolor(in_pos ? color.new(color.maroon, 90) : na, title="In Short Position")
+
+if short_signal and not in_pos
+    label.delete(last_label)
+    last_label := label.new(bar_index, high,
+         text  = "SHORT"                                                          +
+                 "\nStop: " + str.tostring(math.round(stop_at_entry, 2))         +
+                 "  SL%: "  + str.tostring(math.round((stop_at_entry - close) / close * 100, 1)) + "%" +
+                 "\nNATR: " + str.tostring(math.round(natr, 1))                  +
+                 "\nMA slope: " + (ma_falling ? "↓" : "→"),
+         style = label.style_label_down,
+         color = color.new(color.red, 20),
+         textcolor = color.white,
+         size  = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTES
+// • Designed for the WEEKLY timeframe.
+// • This is the MIRROR of the consolidation-breakout long script:
+//     LONG:  above 20W MA, MACD bull, break ABOVE resistance, raised stop on MACD↓
+//     SHORT: below 30W MA, MACD bear, break BELOW support,    lowered stop on MACD↑
+// • Weinstein uses a 30-week MA (≈ 150-day on daily); the longer length filters
+//   the false breakdowns that plague 20W MA on the short side.
+// • Shorting carries unlimited theoretical risk — keep position size modest
+//   (default 10 % of equity vs 16 % for the long script).
+// • Borrow costs, dividends, and short-sale availability are not modelled.
+// ═══════════════════════════════════════════════════════════════════════════════

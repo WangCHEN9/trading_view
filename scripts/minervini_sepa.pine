@@ -1,0 +1,152 @@
+//@version=6
+strategy("Minervini SEPA Trend Template  [LONG / Daily]",
+     overlay               = true,
+     default_qty_type      = strategy.percent_of_equity,
+     default_qty_value     = 10,
+     calc_on_every_tick    = false,
+     pyramiding            = 0)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Mark Minervini's SEPA  (Specific Entry Point Analysis)
+//
+// 2× US Investing Champion (1997, 2021).  Book: "Trade Like a Stock Market Wizard."
+//
+// The strategy has two layers:
+//   1. TREND TEMPLATE  — 8 conditions that filter for stocks in stage-2 uptrend
+//   2. VCP / PIVOT BUY — entry on a breakout from a volatility-contraction pivot
+//
+// Designed for the DAILY timeframe.  Stocks only (uses 52-week high/low logic).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_min_off_low = input.float(25.0, "Min % above 52-week low",          group="Trend Template")
+i_max_off_hi  = input.float(25.0, "Max % below 52-week high",         group="Trend Template")
+i_ma200_lb    = input.int  (22,   "200 SMA up-trend lookback (bars)", group="Trend Template")
+
+i_pivot_lb    = input.int  (15,   "Pivot lookback (bars)",            group="Pivot Entry")
+i_vcp_lb      = input.int  (10,   "VCP contraction lookback",         group="Pivot Entry")
+i_vcp_ratio   = input.float(0.6,  "VCP ratio (recent ATR / prior)",   group="Pivot Entry")
+i_vol_mult    = input.float(1.5,  "Volume vs 50-bar avg multiplier",  group="Pivot Entry")
+
+i_atr_len     = input.int  (14,   "ATR length",                       group="Risk")
+i_atr_mult    = input.float(2.0,  "Initial stop ATR multiplier",      group="Risk")
+i_max_stop    = input.float(10.0, "Max allowed initial stop %",       group="Risk")
+i_trail_len   = input.int  (21,   "Trailing stop high-water bars",    group="Risk")
+
+// ─── Moving averages ──────────────────────────────────────────────────────────
+sma50  = ta.sma(close, 50)
+sma150 = ta.sma(close, 150)
+sma200 = ta.sma(close, 200)
+
+// ─── 52-week high/low (252 trading days) ──────────────────────────────────────
+hi_52w = ta.highest(high, 252)
+lo_52w = ta.lowest (low,  252)
+
+// ─── Trend Template — 7 of Minervini's 8 conditions ───────────────────────────
+// (Condition 8 — Relative Strength rank ≥ 70 vs S&P 500 — requires an IBD-style
+//  RS rank that is not directly available in Pine.  We substitute a price-vs-SPY
+//  ratio check as a reasonable proxy.)
+t1 = close > sma150 and close > sma200
+t2 = sma150 > sma200
+t3 = sma200 > sma200[i_ma200_lb]                                  // 200 SMA up-trending
+t4 = sma50 > sma150 and sma50 > sma200
+t5 = close > sma50
+t6 = close >= lo_52w * (1 + i_min_off_low / 100)                  // ≥ 25 % above 52w low
+t7 = close >= hi_52w * (1 - i_max_off_hi  / 100)                  // within 25 % of 52w high
+
+// Proxy for RS: stock 3-month return vs SPY 3-month return
+spy_close = request.security("AMEX:SPY", timeframe.period, close, ignore_invalid_symbol=true)
+stk_ret   = close     / close[63]     - 1
+spy_ret   = spy_close / spy_close[63] - 1
+t8 = na(spy_ret) ? true : stk_ret > spy_ret                       // outperforming SPY
+
+trend_template = t1 and t2 and t3 and t4 and t5 and t6 and t7 and t8
+
+// ─── VCP (Volatility Contraction Pattern) ─────────────────────────────────────
+// Recent ATR should be less than `i_vcp_ratio` × ATR from the prior block.
+// Tight, contracting price action precedes a clean breakout.
+atr_recent = ta.sma(ta.tr(true), i_vcp_lb)
+atr_prior  = ta.sma(ta.tr(true), i_vcp_lb)[i_vcp_lb]
+vcp_ok     = atr_recent < atr_prior * i_vcp_ratio
+
+// ─── Pivot breakout ───────────────────────────────────────────────────────────
+pivot_high   = ta.highest(high, i_pivot_lb)[1]
+pivot_break  = close > pivot_high
+
+// ─── Volume confirmation ─────────────────────────────────────────────────────
+vol_avg      = ta.sma(volume, 50)
+vol_spike    = volume > vol_avg * i_vol_mult
+
+// ─── Risk ─────────────────────────────────────────────────────────────────────
+atr           = ta.atr(i_atr_len)
+stop_initial  = close - atr * i_atr_mult
+stop_pct      = (close - stop_initial) / close * 100
+stop_ok       = stop_pct <= i_max_stop
+
+// ─── Entry signal ─────────────────────────────────────────────────────────────
+long_signal = trend_template and vcp_ok and pivot_break and vol_spike and stop_ok
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var float cur_stop   = na
+var label last_label = na
+
+in_pos = strategy.position_size > 0
+
+if not in_pos
+    cur_stop := na
+
+if long_signal and not in_pos
+    strategy.entry("Long", strategy.long)
+    cur_stop := stop_initial
+
+// Chandelier-style trailing stop: highest-high(N) − ATR × multiplier, only moves up
+if in_pos
+    trail_candidate = ta.highest(high, i_trail_len) - atr * i_atr_mult
+    if na(cur_stop) or trail_candidate > cur_stop
+        cur_stop := trail_candidate
+    strategy.exit("Stop", from_entry="Long", stop=cur_stop)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════════════════════════════════════════
+plot(sma50,  "50 SMA",  color=color.orange, linewidth=1)
+plot(sma150, "150 SMA", color=color.blue,   linewidth=1)
+plot(sma200, "200 SMA", color=color.red,    linewidth=2)
+
+plot(in_pos ? cur_stop : na, "Trailing Stop",
+     color=color.red, style=plot.style_linebr, linewidth=2)
+
+plotshape(long_signal and not in_pos,
+     title="Buy", style=shape.triangleup, location=location.belowbar,
+     color=color.lime, size=size.normal)
+
+bgcolor(trend_template ? color.new(color.green, 93) : na, title="Trend Template OK")
+
+if long_signal and not in_pos
+    label.delete(last_label)
+    last_label := label.new(bar_index, low,
+         text  = "MINERVINI BUY"                                                    +
+                 "\nStop: "       + str.tostring(math.round(stop_initial, 2))      +
+                 "\nSL%: "        + str.tostring(math.round(stop_pct, 1))  + "%"   +
+                 "\nVCP ratio: "  + str.tostring(math.round(atr_recent / atr_prior, 2)) +
+                 "\nvs SPY 3M: "  + str.tostring(math.round((stk_ret - nz(spy_ret, 0)) * 100, 1)) + "%",
+         style = label.style_label_up,
+         color = color.new(color.green, 20),
+         textcolor = color.white,
+         size  = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTES
+// • DAILY chart, stocks only.
+// • Default position size = 10 % of equity (smaller than the weekly breakout's
+//   16 % because the daily timeframe will trigger more trades).
+// • Trend Template uses 7 of Minervini's 8 rules verbatim; rule 8 (RS rank ≥ 70)
+//   is approximated as 3-month outperformance vs SPY.
+// • VCP detection is a simplified ATR-contraction proxy — Minervini's true VCP
+//   counts discrete consolidation waves which is impractical to automate cleanly.
+// • Exits: chandelier trailing stop (highest high minus 2× ATR) — Minervini
+//   himself favours a wider 50-day MA trail; tune `i_trail_len` to taste.
+// ═══════════════════════════════════════════════════════════════════════════════

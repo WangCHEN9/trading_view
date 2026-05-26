@@ -69,6 +69,10 @@ f_ni_up  = not na(f_net_income) and not na(f_net_income[52]) ? f_net_income > f_
 f_pass(val, threshold) =>
     na(val) ? i_fund_na_ok : val >= threshold
 
+// Helper: stringify a fundamental ratio for the entry label  (must be at global scope)
+f_str(v) =>
+    na(v) ? "n/a" : str.tostring(math.round(v, 1)) + "%"
+
 fund_ok = not i_use_fund or (
      f_pass(f_roe, i_roe_min) and
      f_pass(f_roc, i_roc_min) and
@@ -191,7 +195,6 @@ bgcolor(in_pos ? color.new(color.teal, 90) : na, title="In Position")
 
 // ─── Info Label on signal bar ─────────────────────────────────────────────────
 if long_signal and not in_pos
-    f_str(v) => na(v) ? "n/a" : str.tostring(math.round(v, 1)) + "%"
     label.delete(last_label)
     last_label := label.new(bar_index, low,
          text  = "ENTRY"                                                              +
