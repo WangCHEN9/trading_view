@@ -1,0 +1,103 @@
+//@version=6
+indicator("Screener  Minervini Trend Template  [Daily]", overlay=true)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCREENER — Minervini Trend Template
+// Pair with:  minervini_sepa.pine
+//
+// Purpose: tag stocks that PASS the trend template right now, so you can scan a
+// watchlist every morning and only run the SEPA strategy on the survivors.
+//
+// Usage:
+//   1) Add this indicator to a chart on a stock watchlist.
+//   2) Right-click the indicator → "Add alert on Minervini Trend Template"
+//      pick "Trend Template Pass"  →  Once per bar close, on the watchlist.
+//   3) The alert fires for every symbol passing the template at today's close.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs (kept identical to minervini_sepa.pine for consistency) ──────────
+i_min_off_low = input.float(25.0, "Min % above 52-week low")
+i_max_off_hi  = input.float(25.0, "Max % below 52-week high")
+i_ma200_lb    = input.int  (22,   "200 SMA up-trend lookback (bars)", minval=2)
+i_show_table  = input.bool (true, "Show summary table")
+
+// ─── Moving averages ─────────────────────────────────────────────────────────
+sma50  = ta.sma(close, 50)
+sma150 = ta.sma(close, 150)
+sma200 = ta.sma(close, 200)
+
+hi_52w = ta.highest(high, 252)
+lo_52w = ta.lowest (low,  252)
+
+// ─── 8 conditions of the Trend Template ──────────────────────────────────────
+t1 = close > sma150 and close > sma200
+t2 = sma150 > sma200
+t3 = sma200 > sma200[i_ma200_lb]
+t4 = sma50  > sma150 and sma50 > sma200
+t5 = close  > sma50
+t6 = close >= lo_52w * (1 + i_min_off_low / 100)
+t7 = close >= hi_52w * (1 - i_max_off_hi  / 100)
+
+// RS proxy: 3-month return vs SPY 3-month return
+spy_close = request.security("AMEX:SPY", timeframe.period, close, ignore_invalid_symbol=true)
+stk_ret   = close     / close[63]     - 1
+spy_ret   = spy_close / spy_close[63] - 1
+t8        = na(spy_ret) ? true : stk_ret > spy_ret
+
+passes    = t1 and t2 and t3 and t4 and t5 and t6 and t7 and t8
+
+// Score: how many of the 8 are passing (useful for ranking near-misses)
+score = (t1?1:0) + (t2?1:0) + (t3?1:0) + (t4?1:0) +
+        (t5?1:0) + (t6?1:0) + (t7?1:0) + (t8?1:0)
+
+// ─── Plots ───────────────────────────────────────────────────────────────────
+plot(sma50,  "50 SMA",  color=color.orange, linewidth=1, display=display.pane)
+plot(sma150, "150 SMA", color=color.blue,   linewidth=1, display=display.pane)
+plot(sma200, "200 SMA", color=color.red,    linewidth=2, display=display.pane)
+
+bgcolor(passes ? color.new(color.green, 88) : na, title="Pass shading")
+
+plotshape(passes and not passes[1],
+     title    = "New Pass",
+     style    = shape.triangleup,
+     location = location.belowbar,
+     color    = color.lime,
+     size     = size.small)
+
+// ─── Summary table (top-right) ───────────────────────────────────────────────
+var table tt = table.new(position.top_right, 2, 10, border_width=1)
+
+f_row(row, k, v, ok) =>
+    table.cell(tt, 0, row, k, text_color=color.white,
+         bgcolor=color.new(color.gray, 70), text_size=size.small)
+    table.cell(tt, 1, row, v, text_color=color.white,
+         bgcolor = ok ? color.new(color.green, 30) : color.new(color.red, 30),
+         text_size=size.small)
+
+if i_show_table and barstate.islast
+    table.clear(tt, 0, 0, 1, 9)
+    f_row(0, "Trend Template", str.tostring(score) + " / 8", passes)
+    f_row(1, "1: > 150 & 200 SMA", t1 ? "yes" : "no", t1)
+    f_row(2, "2: 150 > 200 SMA",   t2 ? "yes" : "no", t2)
+    f_row(3, "3: 200 SMA rising",  t3 ? "yes" : "no", t3)
+    f_row(4, "4: 50 > 150 & 200",  t4 ? "yes" : "no", t4)
+    f_row(5, "5: close > 50 SMA",  t5 ? "yes" : "no", t5)
+    f_row(6, "6: > 25% off 52w lo",t6 ? "yes" : "no", t6)
+    f_row(7, "7: within 25% of hi",t7 ? "yes" : "no", t7)
+    f_row(8, "8: RS > SPY (3M)",   t8 ? "yes" : "no", t8)
+    f_row(9, "RS vs SPY",
+         str.tostring(math.round((stk_ret - nz(spy_ret, 0)) * 100, 1)) + "%",
+         stk_ret > nz(spy_ret, 0))
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
+alertcondition(passes and not passes[1],
+     title   = "Trend Template Newly Passed",
+     message = "{{ticker}}  Minervini Trend Template: PASS  (score 8/8)")
+
+alertcondition(passes,
+     title   = "Trend Template Pass",
+     message = "{{ticker}}  Minervini Trend Template: PASS")
+
+alertcondition(score >= 7 and not passes,
+     title   = "Trend Template Near-Miss (7/8)",
+     message = "{{ticker}}  Minervini Trend Template: 7/8 — watch list")

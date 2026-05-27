@@ -211,6 +211,84 @@ if long_signal and not in_pos
          size  = size.small)
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PERFORMANCE ANALYTICS TABLE
+// Reads strategy.closedtrades to compute win rate, profit factor, expectancy,
+// avg win/loss, max DD%, and avg R-multiple.  Shown top-left on the last bar.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+i_show_perf = input.bool(true, "Show performance table", group="Analytics")
+
+// Per-trade risk array — push entry $-risk when a new trade opens, so we can
+// compute true R-multiples for every closed trade.  Index aligns with
+// strategy.closedtrades.* index ordering.
+var array<float> trade_risks = array.new<float>()
+// Detect new entry (position just opened); cur_stop holds the actual entry stop
+// (set in the entry block before this analytics block runs).
+if strategy.position_size > 0 and strategy.position_size[1] <= 0 and not na(cur_stop)
+    risk_per_share = strategy.position_avg_price - cur_stop
+    dollar_risk    = risk_per_share * math.abs(strategy.position_size)
+    if dollar_risk > 0
+        array.push(trade_risks, dollar_risk)
+
+var table perf_tbl = table.new(position.top_left, 2, 11, border_width=1)
+
+f_perf_row(row, k, v, good) =>
+    table.cell(perf_tbl, 0, row, k, text_color=color.white,
+         bgcolor=color.new(color.gray, 70), text_size=size.small)
+    table.cell(perf_tbl, 1, row, v, text_color=color.white,
+         bgcolor = good ? color.new(color.green, 30) : color.new(color.gray, 50),
+         text_size=size.small)
+
+if i_show_perf and barstate.islast
+    table.clear(perf_tbl, 0, 0, 1, 10)
+    n        = strategy.closedtrades
+    wins     = 0
+    losses   = 0
+    gross_w  = 0.0
+    gross_l  = 0.0
+    sum_r    = 0.0
+    r_count  = 0
+    if n > 0
+        for i = 0 to n - 1
+            p = strategy.closedtrades.profit(i)
+            if p > 0
+                wins    += 1
+                gross_w += p
+            else if p < 0
+                losses  += 1
+                gross_l += math.abs(p)
+            // True R-multiple: trade $ profit / $-risk recorded at entry
+            if i < array.size(trade_risks)
+                r_dollar = array.get(trade_risks, i)
+                if r_dollar > 0
+                    sum_r   += p / r_dollar
+                    r_count += 1
+    win_rate = n > 0 ? wins / n * 100 : 0.0
+    pf       = gross_l > 0 ? gross_w / gross_l : na
+    avg_w    = wins   > 0 ? gross_w / wins     : 0.0
+    avg_l    = losses > 0 ? gross_l / losses   : 0.0
+    exp_pt   = n > 0 ? (gross_w - gross_l) / n : 0.0
+    avg_r    = r_count > 0 ? sum_r / r_count : 0.0
+    max_dd_p = strategy.initial_capital > 0 ?
+               strategy.max_drawdown / strategy.initial_capital * 100 : 0.0
+    net_p    = strategy.netprofit
+    net_pct  = strategy.initial_capital > 0 ?
+               net_p / strategy.initial_capital * 100 : 0.0
+
+    f_perf_row(0,  "Trades",        str.tostring(n),                            n >= 20)
+    f_perf_row(1,  "Win rate",      str.tostring(math.round(win_rate, 1)) + "%", win_rate >= 50)
+    f_perf_row(2,  "Profit factor", na(pf) ? "n/a" : str.tostring(math.round(pf, 2)),
+                                     not na(pf) and pf >= 1.5)
+    f_perf_row(3,  "Expectancy ($)",str.tostring(math.round(exp_pt, 2)),         exp_pt > 0)
+    f_perf_row(4,  "Avg R",         str.tostring(math.round(avg_r, 2)),          avg_r > 0)
+    f_perf_row(5,  "Avg win ($)",   str.tostring(math.round(avg_w, 2)),          true)
+    f_perf_row(6,  "Avg loss ($)",  str.tostring(math.round(avg_l, 2)),          false)
+    f_perf_row(7,  "Net profit ($)",str.tostring(math.round(net_p, 2)),          net_p > 0)
+    f_perf_row(8,  "Net profit %",  str.tostring(math.round(net_pct, 1)) + "%",  net_pct > 0)
+    f_perf_row(9,  "Max DD %",      str.tostring(math.round(max_dd_p, 1)) + "%", max_dd_p < 20)
+    f_perf_row(10, "Open trades",   str.tostring(strategy.opentrades),           strategy.opentrades > 0)
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // NOTES
 // • Designed for the WEEKLY timeframe — backtest and trade on 1W charts only.
 // • Position size defaults to 16 % of equity (Kelly ⅓ fraction).

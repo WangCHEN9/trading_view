@@ -1,0 +1,112 @@
+//@version=6
+indicator("Screener  Consolidation Watch  [Weekly]", overlay=true)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCREENER — Tight Consolidation Watch
+// Pair with:  consolidation_breakout.pine
+//
+// Purpose: flag stocks that are CURRENTLY consolidating below resistance, BEFORE
+// the breakout fires.  This gives you a pre-loaded watchlist so when the
+// breakout candle arrives, the symbol is already on your radar.
+//
+// A stock is on the watch list when ALL of:
+//   • close > 20W MA               (uptrend filter)
+//   • NATR < threshold             (tight range)
+//   • range over last N weeks compressed vs the prior block (contraction)
+//   • close within X% of resistance, not yet above it
+//
+// Designed for 1W charts.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+i_ma_len       = input.int  (20,  "Trend MA (weeks)",            minval=5)
+i_consol_len   = input.int  (6,   "Consolidation lookback",      minval=4)
+i_natr_max     = input.float(8.0, "Max NATR (% of price)")
+i_dist_max     = input.float(3.0, "Max % below resistance",
+     tooltip="Close must be within this % of the consolidation high")
+i_contr_ratio  = input.float(0.7, "Range contraction ratio",
+     tooltip="Recent ATR / prior ATR must be <= this")
+i_show_table   = input.bool (true, "Show summary table")
+
+// ─── Core ────────────────────────────────────────────────────────────────────
+ma20         = ta.sma(close, i_ma_len)
+atr_recent   = ta.sma(ta.tr(true), i_consol_len)
+atr_prior    = ta.sma(ta.tr(true), i_consol_len)[i_consol_len]
+natr         = ta.atr(14) / close * 100
+
+c_res        = ta.highest(close, i_consol_len)[1]
+c_sup        = ta.lowest (close, i_consol_len)[1]
+dist_to_res  = (c_res - close) / close * 100
+
+// ─── Filters ─────────────────────────────────────────────────────────────────
+above_ma     = close > ma20
+tight        = natr < i_natr_max
+contracting  = not na(atr_prior) and atr_prior > 0 and
+               (atr_recent / atr_prior) <= i_contr_ratio
+near_res     = dist_to_res >= 0 and dist_to_res <= i_dist_max
+not_broken   = close <= c_res                                  // not yet broken out
+
+watching     = above_ma and tight and contracting and near_res and not_broken
+
+// Score for ranking near-misses
+score = (above_ma?1:0) + (tight?1:0) + (contracting?1:0) +
+        (near_res?1:0) + (not_broken?1:0)
+
+// Edge trigger: newly qualified for the watch list
+new_watch = watching and not watching[1]
+
+// ─── Plots ───────────────────────────────────────────────────────────────────
+plot(ma20, "20W MA", color=color.blue, linewidth=2)
+
+plot(watching ? c_res : na, "Resistance",
+     color=color.new(color.silver, 20), style=plot.style_linebr, linewidth=1)
+plot(watching ? c_sup : na, "Support",
+     color=color.new(color.silver, 20), style=plot.style_linebr, linewidth=1)
+
+bgcolor(watching ? color.new(color.yellow, 88) : na, title="Watching")
+
+plotshape(new_watch,
+     title    = "New Watch",
+     style    = shape.flag,
+     location = location.belowbar,
+     color    = color.yellow,
+     text     = "WATCH")
+
+// ─── Summary table ───────────────────────────────────────────────────────────
+var table tt = table.new(position.top_right, 2, 6, border_width=1)
+
+f_row(row, k, v, ok) =>
+    table.cell(tt, 0, row, k, text_color=color.white,
+         bgcolor=color.new(color.gray, 70), text_size=size.small)
+    table.cell(tt, 1, row, v, text_color=color.white,
+         bgcolor = ok ? color.new(color.green, 30) : color.new(color.red, 30),
+         text_size=size.small)
+
+contr_val = (not na(atr_prior) and atr_prior > 0) ?
+            atr_recent / atr_prior : na
+
+if i_show_table and barstate.islast
+    table.clear(tt, 0, 0, 1, 5)
+    f_row(0, "Watch",          watching ? "YES" : "no", watching)
+    f_row(1, "> 20W MA",       above_ma ? "yes" : "no", above_ma)
+    f_row(2, "NATR < " + str.tostring(i_natr_max),
+                                str.tostring(math.round(natr, 2)) + "%", tight)
+    f_row(3, "ATR ratio",
+           na(contr_val) ? "n/a" : str.tostring(math.round(contr_val, 2)),
+           contracting)
+    f_row(4, "Dist to res",
+           str.tostring(math.round(dist_to_res, 2)) + "%", near_res)
+    f_row(5, "Score",          str.tostring(score) + " / 5", watching)
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
+alertcondition(new_watch,
+     title   = "New Consolidation Watch",
+     message = "{{ticker}}  Tight consolidation near resistance — add to watchlist")
+
+alertcondition(watching,
+     title   = "On Watch",
+     message = "{{ticker}}  Still consolidating near resistance")
+
+alertcondition(score >= 4 and not watching,
+     title   = "Watch Near-Miss (4/5)",
+     message = "{{ticker}}  4/5 consolidation criteria — close call")

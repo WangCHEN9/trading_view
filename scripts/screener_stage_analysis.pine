@@ -1,0 +1,121 @@
+//@version=6
+indicator("Screener  Weinstein Stage Analysis  [Weekly]", overlay=true)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCREENER — Stan Weinstein 4-Stage Model
+// Pair with:  consolidation_breakout.pine  (enter LONG candidates in Stage 2)
+//             weinstein_stage4_short.pine  (enter SHORT candidates in Stage 4)
+//
+// The 4 stages (Weinstein, 1988):
+//   • Stage 1 — Basing      : price sideways, 30W MA flat
+//   • Stage 2 — Advancing   : price > 30W MA, MA rising      ← LONG zone
+//   • Stage 3 — Top         : price sideways, 30W MA flat/rolling
+//   • Stage 4 — Declining   : price < 30W MA, MA falling      ← SHORT zone
+//
+// Designed for 1W charts.  Use with a stock watchlist.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+i_ma_len      = input.int  (30,  "Weinstein MA (weeks)",         minval=10)
+i_slope_lb    = input.int  (4,   "Slope lookback (weeks)",       minval=2)
+i_slope_eps   = input.float(0.5, "Flat MA tolerance (%)",        minval=0.0,
+     tooltip="MA slope smaller than this % counts as 'flat' (Stages 1 & 3)")
+i_show_table  = input.bool (true, "Show stage table")
+
+// ─── Core ────────────────────────────────────────────────────────────────────
+ma         = ta.sma(close, i_ma_len)
+ma_change  = (ma - ma[i_slope_lb]) / ma[i_slope_lb] * 100
+ma_rising  = ma_change >   i_slope_eps
+ma_falling = ma_change <  -i_slope_eps
+ma_flat    = not ma_rising and not ma_falling
+
+above_ma   = close > ma
+below_ma   = close < ma
+
+// ─── Stage classification ────────────────────────────────────────────────────
+stage2 = above_ma and ma_rising              // LONG zone
+stage4 = below_ma and ma_falling             // SHORT zone
+stage3 = above_ma and (ma_flat or ma_falling)
+stage1 = below_ma and (ma_flat or ma_rising)
+
+stage  = stage2 ? 2 : stage4 ? 4 : stage3 ? 3 : stage1 ? 1 : 0
+
+// Edge-trigger: just changed stage
+stage_chg = stage != stage[1]
+entered_2 = stage == 2 and stage[1] != 2
+entered_4 = stage == 4 and stage[1] != 4
+
+// ─── Plots ───────────────────────────────────────────────────────────────────
+ma_color = stage2 ? color.lime :
+           stage4 ? color.red  :
+           stage3 ? color.orange : color.gray
+
+plot(ma, "30W MA", color=ma_color, linewidth=2)
+
+bg = stage2 ? color.new(color.green,  90) :
+     stage4 ? color.new(color.maroon, 90) :
+     stage3 ? color.new(color.orange, 92) :
+     stage1 ? color.new(color.blue,   92) : na
+
+bgcolor(bg, title="Stage tint")
+
+plotshape(entered_2,
+     title    = "Entered Stage 2",
+     style    = shape.triangleup,
+     location = location.belowbar,
+     color    = color.lime,
+     text     = "S2")
+
+plotshape(entered_4,
+     title    = "Entered Stage 4",
+     style    = shape.triangledown,
+     location = location.abovebar,
+     color    = color.red,
+     text     = "S4")
+
+// ─── Summary table ───────────────────────────────────────────────────────────
+var table tt = table.new(position.top_right, 2, 5, border_width=1)
+
+f_cell(row, k, v, hi) =>
+    table.cell(tt, 0, row, k, text_color=color.white,
+         bgcolor=color.new(color.gray, 70), text_size=size.small)
+    table.cell(tt, 1, row, v, text_color=color.white,
+         bgcolor = hi ? color.new(color.green, 30) : color.new(color.gray, 50),
+         text_size=size.small)
+
+stage_label = stage == 2 ? "Stage 2 — Advancing  (LONG zone)" :
+              stage == 4 ? "Stage 4 — Declining  (SHORT zone)" :
+              stage == 3 ? "Stage 3 — Top / Distribution"     :
+              stage == 1 ? "Stage 1 — Base"                   :
+                           "Undefined"
+
+if i_show_table and barstate.islast
+    table.clear(tt, 0, 0, 1, 4)
+    f_cell(0, "Stage",      stage_label, stage == 2 or stage == 4)
+    f_cell(1, "30W MA",     str.tostring(math.round(ma, 2)), false)
+    f_cell(2, "Price vs MA",
+           str.tostring(math.round((close - ma) / ma * 100, 1)) + "%", above_ma)
+    f_cell(3, "MA slope (" + str.tostring(i_slope_lb) + "w)",
+           str.tostring(math.round(ma_change, 2)) + "%",
+           ma_rising or ma_falling)
+    f_cell(4, "Pair strategy",
+           stage == 2 ? "consolidation_breakout" :
+           stage == 4 ? "weinstein_stage4_short" : "(wait)",
+           stage == 2 or stage == 4)
+
+// ─── Alerts ──────────────────────────────────────────────────────────────────
+alertcondition(entered_2,
+     title   = "Entered Stage 2 (LONG candidate)",
+     message = "{{ticker}}  Stage 2 entry — load on LONG watchlist")
+
+alertcondition(entered_4,
+     title   = "Entered Stage 4 (SHORT candidate)",
+     message = "{{ticker}}  Stage 4 entry — load on SHORT watchlist")
+
+alertcondition(stage == 2,
+     title   = "Currently Stage 2",
+     message = "{{ticker}}  Currently in Stage 2")
+
+alertcondition(stage == 4,
+     title   = "Currently Stage 4",
+     message = "{{ticker}}  Currently in Stage 4")

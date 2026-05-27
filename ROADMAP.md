@@ -1,0 +1,95 @@
+# Trading Toolkit — Roadmap
+
+Tracks what we've built and what's still missing before going live with real money.
+
+Legend:  ✅ done · 🟡 partial · ❌ not started
+
+---
+
+## Layer 1 — Strategy Logic
+
+| Item | Status | File / Notes |
+|---|---|---|
+| Weekly consolidation breakout (LONG) | ✅ | `scripts/consolidation_breakout.pine` — w/ fundamental filters |
+| Minervini SEPA + VCP (LONG, daily) | ✅ | `scripts/minervini_sepa.pine` |
+| Weinstein Stage 4 breakdown (SHORT, weekly) | ✅ | `scripts/weinstein_stage4_short.pine` |
+| Daily SHORT mirror | ❌ | Minervini-style breakdown short on daily |
+| Mean-reversion (RSI(2) / pullback to MA) | ❌ | Larry Connors style |
+| Donchian / Turtle trend follower | ❌ | Pure breakout, no fundamentals |
+| Intraday strategy (ORB / VWAP reversion) | ❌ | Not on the table yet |
+
+## Layer 2 — Screening / Universe
+
+| Item | Status | File / Notes |
+|---|---|---|
+| Minervini Trend Template screener | ✅ | `scripts/screener_minervini_trend.pine` |
+| Weinstein stage analysis screener | ✅ | `scripts/screener_stage_analysis.pine` — pairs LONG + SHORT |
+| Tight consolidation pre-watch screener | ✅ | `scripts/screener_consolidation_watch.pine` |
+| Define the **universe** to scan | ❌ | E.g. S&P 500, Nasdaq 100, IBD 50, custom watchlist. Must commit to one before alerts are meaningful. |
+| TradingView alert setup (per watchlist) | ❌ | Wire each screener as an alert on the chosen universe; "Once per bar close". |
+| Liquidity / float floor | ❌ | E.g. min avg daily $ volume = $10M; add as a filter to the screeners. |
+| Sector / industry classification overlay | ❌ | Useful for diversification — TV doesn't expose sector in Pine natively, may need manual tag. |
+
+## Layer 3 — Validation / Backtesting
+
+| Item | Status | Notes |
+|---|---|---|
+| Single-symbol backtest in TradingView | 🟡 | Strategies run, but unverified by user across many symbols |
+| Walk-forward across full universe | ❌ | Manual: pick 20–30 symbols, run, log win-rate / expectancy / max DD |
+| Out-of-sample test | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
+| Slippage + commission realism | ❌ | TV strategy settings: set commission, slippage assumptions for the broker you'll use |
+| Robustness: regime test | ❌ | Run on bull (2017, 2020–21), bear (2022), sideways (2015) periods separately |
+
+## Layer 4 — Risk & Position Sizing
+
+| Item | Status | Notes |
+|---|---|---|
+| Per-trade % of equity | ✅ | Built into each strategy (16% / 10%) |
+| Max trade stop % cap | ✅ | `i_max_stop` in each strategy |
+| **Portfolio-level** cap (max concurrent positions) | ❌ | E.g. max 4 open at once = 16% × 4 = 64% deployed |
+| Sector exposure cap | ❌ | Don't allow 4 semis at once |
+| Correlation check | ❌ | Skip new entry if highly correlated with existing position |
+| Kelly fraction calibration | 🟡 | 16% used as Kelly⅓ assumption — needs validation from actual win-rate |
+| Heat / drawdown circuit breaker | ❌ | Stop trading after N losses or X% account DD |
+
+## Layer 5 — Execution / Operations
+
+| Item | Status | Notes |
+|---|---|---|
+| Broker chosen | 🟡 | **Manual workflow via TradingView alerts** (user choice). Pick the actual broker account to use. |
+| Alert → order flow | ✅ | **Manual**: TradingView alert → user reviews → places order in broker UI. No webhook/API integration needed. |
+| Order types | ❌ | Stop-limit recommended for breakout entries to control slippage |
+| Pre-market routine | ❌ | Read alerts, check macro (SPY, VIX, rates), confirm setup quality before placing orders |
+| Failure modes drilled | ❌ | What if a fill is missed? Mid-day gap through stop? Halted stock? |
+
+## Layer 6 — Journal & Continuous Improvement
+
+| Item | Status | Notes |
+|---|---|---|
+| Trade journal template | ❌ | Spreadsheet or Edgewonk / Tradervue. Log entry/exit/R/mistakes per trade. |
+| Weekly review cadence | ❌ | Friday post-close: review week's signals + executed trades + missed |
+| Monthly stats dashboard | ❌ | Win-rate, avg R-multiple, expectancy, max DD vs backtest expectations |
+| Strategy retirement criteria | ❌ | At what point of underperformance do you turn off a strategy? |
+
+## Layer 7 — Optional Tooling (Python side)
+
+| Item | Status | Notes |
+|---|---|---|
+| `uv` venv in repo | ✅ | Established last session |
+| `pdfplumber` for strategy ingestion | ✅ | Used on `strategy/blueprint_2025.pdf` |
+| Universe downloader (yfinance / polygon) | ❌ | Local backtest harness independent of TradingView |
+| Backtest engine (vectorbt / backtesting.py) | ❌ | For walk-forward at scale — TV alone caps you at one symbol |
+| Alert ingestion + journal automation | ❌ | Pipe TradingView alert emails into a Postgres / Sheets log |
+
+---
+
+## Next Concrete Steps  (recommended order)
+
+1. **Commit a universe** — pick S&P 500 or Nasdaq 100 as the scan universe.
+2. **Wire screeners to alerts** — set "Once per bar close" alerts on the universe for each screener.
+3. **Backtest validation** (in progress) — verify edge across universe before risking capital.
+4. **Portfolio risk cap** — decide max concurrent positions and write it into a checklist *before* placing trades.
+5. **Pick the actual broker account** — execution flow is manual (alert → review → place order in broker UI).
+6. **Paper trade for 4–8 weeks** before real money.
+
+Update this file after each session — tick the box, link the commit.
