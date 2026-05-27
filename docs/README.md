@@ -9,6 +9,7 @@ This folder explains each strategy and screener: what it does, why, and what to 
 | [Consolidation Breakout](strategies/consolidation_breakout.md) | `scripts/consolidation_breakout.pine` | Weekly | LONG |
 | [Minervini SEPA](strategies/minervini_sepa.md) | `scripts/minervini_sepa.pine` | Daily | LONG |
 | [Weinstein Stage 4 Short](strategies/weinstein_stage4_short.md) | `scripts/weinstein_stage4_short.pine` | Weekly | SHORT |
+| [Overvalued Growth Breakdown Short](strategies/overvalued_growth_short.md) | `scripts/overvalued_growth_short.pine` | Daily | SHORT |
 
 All three use **Van Tharp fixed-fractional 2.5% risk sizing** with a 25% notional ceiling. See each doc's *Position sizing* section.
 
@@ -21,6 +22,7 @@ These are pure indicators — no `strategy.entry`. They flag candidates so you o
 | `scripts/screener_minervini_trend.pine` | Minervini SEPA | Stocks currently passing 7/8 or 8/8 of the Trend Template, with a near-miss alert at 7/8 |
 | `scripts/screener_stage_analysis.pine` | Consolidation Breakout (Stage 2) + Weinstein Stage 4 Short | Tags the current Weinstein stage (1–4); alerts on Stage 2 / Stage 4 entry |
 | `scripts/screener_consolidation_watch.pine` | Consolidation Breakout | Tight consolidations near resistance — *before* the breakout fires (pre-watch list) |
+| `scripts/screener_overvalued_growth.pine` | Overvalued Growth Short | 3-layer filter (valuation + deterioration + technical) for short candidates; respects macro override |
 
 ### How to use screeners in TradingView
 

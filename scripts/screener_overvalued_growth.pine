@@ -1,0 +1,189 @@
+//@version=6
+indicator("Screener  Overvalued Growth Breakdown  [Daily]", overlay=true)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCREENER — Overvalued Growth Breakdown (short candidate flagger)
+// Pair with:  overvalued_growth_short.pine
+//
+// THREE-LAYER FILTER — a name only qualifies if ALL THREE pass:
+//
+//   Layer 1 — VALUATION:        Price/Sales > 10, OR (unprofitable AND P/S > 5),
+//                                OR (EV/EBITDA > 40 with revenue growth < 30%)
+//   Layer 2 — DETERIORATION:    Revenue YoY growth decelerating, OR negative
+//                                trailing operating income, OR relative strength
+//                                vs IGV negative (3-month)
+//   Layer 3 — TECHNICAL BREAK:  Below 50-DMA & 200-DMA, 50<200 (death cross),
+//                                200-DMA flat/declining, breakdown below
+//                                20-day low on volume spike
+//
+// MACRO FILTER (skip new shorts):  SPY above 200-DMA AND VIX below 16
+//
+// Designed for the DAILY timeframe.  Stocks only (uses request.financial).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_ps_rich     = input.float(10.0, "Min P/S to flag as overvalued",   group="Layer 1 — Valuation")
+i_ps_unprof   = input.float(5.0,  "Min P/S for unprofitable names",  group="Layer 1 — Valuation")
+
+i_decel_pp    = input.float(5.0,  "Min growth deceleration (pp)",    group="Layer 2 — Deterioration",
+     tooltip="Latest YoY revenue growth must have fallen by at least this many percentage points vs prior quarter")
+i_rs_lb       = input.int  (63,   "Relative strength lookback (bars)", group="Layer 2 — Deterioration")
+i_benchmark   = input.string("AMEX:IGV", "Software benchmark",       options=["AMEX:IGV","NASDAQ:QQQ","AMEX:SPY"],
+                              group="Layer 2 — Deterioration")
+
+i_ma_slope_lb = input.int  (50,   "200-DMA slope lookback",          group="Layer 3 — Technical")
+i_break_lb    = input.int  (20,   "Breakdown low lookback (bars)",   group="Layer 3 — Technical")
+i_vol_mult    = input.float(1.5,  "Volume vs 50-bar avg multiplier", group="Layer 3 — Technical")
+
+i_use_macro   = input.bool (true, "Enable macro filter",             group="Macro")
+i_vix_calm    = input.float(16.0, "VIX threshold for 'calm' regime", group="Macro")
+i_macro_ma    = input.int  (200,  "SPY MA length (calm regime)",     group="Macro")
+
+i_show_table  = input.bool (true, "Show summary table")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 1 — VALUATION
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARKET_CAP_BASIC is TradingView's market cap field.  TOTAL_REVENUE TTM gives
+// us trailing-twelve-month revenue.  P/S = market_cap / revenue.
+f_mkt_cap     = request.financial(syminfo.tickerid, "MARKET_CAP_BASIC", "FQ", ignore_invalid_symbol=true)
+f_revenue_ttm = request.financial(syminfo.tickerid, "TOTAL_REVENUE",    "TTM", ignore_invalid_symbol=true)
+f_op_inc_ttm  = request.financial(syminfo.tickerid, "OPER_INCOME",      "TTM", ignore_invalid_symbol=true)
+f_net_inc_ttm = request.financial(syminfo.tickerid, "NET_INCOME",       "TTM", ignore_invalid_symbol=true)
+
+ps_ratio = not na(f_mkt_cap) and not na(f_revenue_ttm) and f_revenue_ttm > 0 ?
+             f_mkt_cap / f_revenue_ttm : na
+
+unprofitable = not na(f_op_inc_ttm) and f_op_inc_ttm < 0
+
+v1_rich      = not na(ps_ratio) and ps_ratio > i_ps_rich
+v1_unprof    = not na(ps_ratio) and ps_ratio > i_ps_unprof and unprofitable
+valuation_ok = v1_rich or v1_unprof
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 2 — DETERIORATION
+// ═══════════════════════════════════════════════════════════════════════════════
+// Revenue growth deceleration:
+//   YoY_now   = TTM_rev / TTM_rev[252] - 1   (1 year of trading days)
+//   YoY_prior = TTM_rev[63] / TTM_rev[63+252] - 1   (1 quarter ago)
+// Deceleration flag = YoY_now is at least i_decel_pp points lower than YoY_prior.
+
+rev_yoy_now   = not na(f_revenue_ttm) and not na(f_revenue_ttm[252]) and f_revenue_ttm[252] > 0 ?
+                  (f_revenue_ttm / f_revenue_ttm[252] - 1) * 100 : na
+rev_yoy_prior = not na(f_revenue_ttm[63]) and not na(f_revenue_ttm[63+252]) and f_revenue_ttm[63+252] > 0 ?
+                  (f_revenue_ttm[63] / f_revenue_ttm[63+252] - 1) * 100 : na
+
+d_decel    = not na(rev_yoy_now) and not na(rev_yoy_prior) and
+             (rev_yoy_prior - rev_yoy_now) >= i_decel_pp
+d_neg_op   = not na(f_op_inc_ttm) and f_op_inc_ttm < 0
+
+// Relative strength vs benchmark over i_rs_lb bars
+bench_close = request.security(i_benchmark, timeframe.period, close, ignore_invalid_symbol=true)
+stk_ret     = close[0] / close[i_rs_lb] - 1
+bench_ret   = not na(bench_close[i_rs_lb]) ? bench_close / bench_close[i_rs_lb] - 1 : na
+d_rs_weak   = not na(bench_ret) and stk_ret < bench_ret
+
+deterioration_ok = d_decel or d_neg_op or d_rs_weak
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 3 — TECHNICAL BREAKDOWN
+// ═══════════════════════════════════════════════════════════════════════════════
+sma50  = ta.sma(close, 50)
+sma200 = ta.sma(close, 200)
+
+t_below_both    = close < sma50 and close < sma200
+t_death_cross   = sma50 < sma200
+t_ma_declining  = sma200 <= sma200[i_ma_slope_lb]
+t_break_low     = close < ta.lowest(low, i_break_lb)[1]
+vol_avg50       = ta.sma(volume, 50)
+t_vol_spike     = volume > vol_avg50 * i_vol_mult
+
+technical_ok = t_below_both and t_death_cross and t_ma_declining and t_break_low and t_vol_spike
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MACRO FILTER  (skip new shorts in obvious bull regime)
+// ═══════════════════════════════════════════════════════════════════════════════
+spy_close   = request.security("AMEX:SPY", timeframe.period, close, ignore_invalid_symbol=true)
+spy_sma     = request.security("AMEX:SPY", timeframe.period, ta.sma(close, i_macro_ma), ignore_invalid_symbol=true)
+vix_close   = request.security("CBOE:VIX", timeframe.period, close, ignore_invalid_symbol=true)
+
+macro_calm  = not na(spy_close) and not na(spy_sma) and not na(vix_close) and
+              spy_close > spy_sma and vix_close < i_vix_calm
+macro_ok    = not i_use_macro or not macro_calm
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPOSITE
+// ═══════════════════════════════════════════════════════════════════════════════
+qualifies = valuation_ok and deterioration_ok and technical_ok and macro_ok
+
+score = (valuation_ok    ? 1 : 0) +
+        (deterioration_ok ? 1 : 0) +
+        (technical_ok    ? 1 : 0)
+
+new_qualifier = qualifies and not qualifies[1]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════════════════════════════════════════
+ma_color = sma50 < sma200 and sma200 <= sma200[i_ma_slope_lb] ? color.red :
+           sma50 < sma200 ? color.orange : color.gray
+
+plot(sma50,  "50 SMA",  color=color.orange, linewidth=1)
+plot(sma200, "200 SMA", color=ma_color,     linewidth=2)
+
+bgcolor(qualifies ? color.new(color.maroon, 85) : na, title="Qualifies")
+
+plotshape(new_qualifier,
+     title    = "New Short Candidate",
+     style    = shape.triangledown,
+     location = location.abovebar,
+     color    = color.red,
+     text     = "SHORT?",
+     size     = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUMMARY TABLE
+// ═══════════════════════════════════════════════════════════════════════════════
+var table tt = table.new(position.top_right, 2, 13, border_width=1)
+
+f_str(v) =>
+    na(v) ? "n/a" : str.tostring(math.round(v, 1))
+
+f_row(row, k, v, ok) =>
+    table.cell(tt, 0, row, k, text_color=color.white,
+         bgcolor=color.new(color.gray, 70), text_size=size.small)
+    table.cell(tt, 1, row, v, text_color=color.white,
+         bgcolor = ok ? color.new(color.green, 30) : color.new(color.red, 30),
+         text_size=size.small)
+
+if i_show_table and barstate.islast
+    table.clear(tt, 0, 0, 1, 12)
+    f_row(0,  "Qualifies (3/3)",  str.tostring(score) + " / 3", qualifies)
+    f_row(1,  "── Layer 1 ──",    valuation_ok ? "PASS" : "fail", valuation_ok)
+    f_row(2,  "P/S ratio",        f_str(ps_ratio),               not na(ps_ratio) and ps_ratio > i_ps_rich)
+    f_row(3,  "Unprofitable",     unprofitable ? "yes" : "no",   unprofitable)
+    f_row(4,  "── Layer 2 ──",    deterioration_ok ? "PASS" : "fail", deterioration_ok)
+    f_row(5,  "Rev YoY now",      f_str(rev_yoy_now)  + "%",     not na(rev_yoy_now) and rev_yoy_now < 30)
+    f_row(6,  "Rev YoY prior",    f_str(rev_yoy_prior) + "%",    not na(rev_yoy_prior))
+    f_row(7,  "Decelerating",     d_decel ? "yes" : "no",        d_decel)
+    f_row(8,  "RS vs " + i_benchmark, f_str((stk_ret - nz(bench_ret, 0)) * 100) + "%",
+                                   d_rs_weak)
+    f_row(9,  "── Layer 3 ──",    technical_ok ? "PASS" : "fail", technical_ok)
+    f_row(10, "Below 50 & 200",   t_below_both ? "yes" : "no",   t_below_both)
+    f_row(11, "Death cross",      t_death_cross ? "yes" : "no",  t_death_cross)
+    f_row(12, "Macro permits",    macro_ok ? "yes" : "no",       macro_ok)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════════════════════════════════
+alertcondition(new_qualifier,
+     title   = "New Overvalued Growth Short Candidate",
+     message = "{{ticker}}  3/3 short filter passed — review for entry")
+
+alertcondition(qualifies,
+     title   = "Currently Qualifies as Short",
+     message = "{{ticker}}  Currently passes all 3 short filters")
+
+alertcondition(score == 2 and valuation_ok and deterioration_ok and not technical_ok,
+     title   = "Fundamentals weak, awaiting technical break",
+     message = "{{ticker}}  Layers 1+2 pass, technical breakdown pending — add to watchlist")

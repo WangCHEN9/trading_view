@@ -13,7 +13,7 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Weekly consolidation breakout (LONG) | ✅ | `scripts/consolidation_breakout.pine` — w/ fundamental filters |
 | Minervini SEPA + VCP (LONG, daily) | ✅ | `scripts/minervini_sepa.pine` |
 | Weinstein Stage 4 breakdown (SHORT, weekly) | ✅ | `scripts/weinstein_stage4_short.pine` |
-| Daily SHORT mirror | ❌ | Minervini-style breakdown short on daily |
+| Overvalued growth breakdown (SHORT, daily) | ✅ | `scripts/overvalued_growth_short.pine` + matching screener — three-layer filter (valuation + deterioration + technical), macro override, tight 1.5% risk sizing |
 | Mean-reversion (RSI(2) / pullback to MA) | ❌ | Larry Connors style |
 | Donchian / Turtle trend follower | ❌ | Pure breakout, no fundamentals |
 | Intraday strategy (ORB / VWAP reversion) | ❌ | Not on the table yet |
@@ -25,6 +25,7 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Minervini Trend Template screener | ✅ | `scripts/screener_minervini_trend.pine` |
 | Weinstein stage analysis screener | ✅ | `scripts/screener_stage_analysis.pine` — pairs LONG + SHORT |
 | Tight consolidation pre-watch screener | ✅ | `scripts/screener_consolidation_watch.pine` |
+| Overvalued growth short screener (3-layer filter) | ✅ | `scripts/screener_overvalued_growth.pine` — pairs with `overvalued_growth_short.pine` |
 | Define the **universe** to scan | ❌ | E.g. S&P 500, Nasdaq 100, IBD 50, custom watchlist. Must commit to one before alerts are meaningful. |
 | TradingView alert setup (per watchlist) | ❌ | Wire each screener as an alert on the chosen universe; "Once per bar close". |
 | Liquidity / float floor | ❌ | E.g. min avg daily $ volume = $10M; add as a filter to the screeners. |

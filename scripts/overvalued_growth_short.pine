@@ -1,0 +1,315 @@
+//@version=6
+strategy("Overvalued Growth Breakdown Short  [SHORT / Daily]",
+     overlay               = true,
+     default_qty_type      = strategy.fixed,
+     default_qty_value     = 1,
+     calc_on_every_tick    = false,
+     pyramiding            = 0,
+     initial_capital       = 100000)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OVERVALUED GROWTH BREAKDOWN  —  SHORT (daily)
+//
+// Thesis: unprofitable / decelerating-growth names at rich valuation multiples
+// become high-probability shorts once they break down technically.  Pure
+// valuation shorts have a terrible historical record; the combination of
+// (1) rich multiple, (2) deterioration trigger, (3) technical breakdown is
+// what historically worked (2000-02, 2022 ZIRP unwind).
+//
+// THREE-LAYER FILTER (all three must pass):
+//   1. VALUATION:    P/S > 10, OR (unprofitable AND P/S > 5)
+//   2. DETERIORATION: revenue YoY decelerating, OR neg op income,
+//                     OR underperforming software benchmark (IGV)
+//   3. TECHNICAL:    below 50/200 DMA, death cross, 200 DMA declining,
+//                    breakdown below 20-day low on volume spike
+//
+// MACRO OVERRIDE: skip new shorts when SPY > 200-DMA AND VIX < 16.
+//
+// RISK CONTROLS (tighter than the long-side strategies):
+//   • 1.5% risk per trade (vs 2.5% for longs) — short squeezes have unlimited tail
+//   • 15% max position notional (vs 25% for longs)
+//   • Stop = min(entry + 2 × ATR, recent 10-bar high + 1% buffer)
+//   • Trail using 10-day high (only lowers, never raises)
+//   • Cover on close ABOVE 50-DMA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs (mirror the screener) ─────────────────────────────────────────────
+i_ps_rich     = input.float(10.0, "Min P/S to flag as overvalued",   group="Layer 1 — Valuation")
+i_ps_unprof   = input.float(5.0,  "Min P/S for unprofitable names",  group="Layer 1 — Valuation")
+
+i_decel_pp    = input.float(5.0,  "Min growth deceleration (pp)",    group="Layer 2 — Deterioration")
+i_rs_lb       = input.int  (63,   "Relative strength lookback (bars)", group="Layer 2 — Deterioration")
+i_benchmark   = input.string("AMEX:IGV", "Software benchmark",
+                              options=["AMEX:IGV","NASDAQ:QQQ","AMEX:SPY"],
+                              group="Layer 2 — Deterioration")
+
+i_ma_slope_lb = input.int  (50,   "200-DMA slope lookback",          group="Layer 3 — Technical")
+i_break_lb    = input.int  (20,   "Breakdown low lookback (bars)",   group="Layer 3 — Technical")
+i_vol_mult    = input.float(1.5,  "Volume vs 50-bar avg multiplier", group="Layer 3 — Technical")
+
+i_use_macro   = input.bool (true, "Enable macro filter",             group="Macro")
+i_vix_calm    = input.float(16.0, "VIX threshold for 'calm' regime", group="Macro")
+i_macro_ma    = input.int  (200,  "SPY MA length",                   group="Macro")
+
+i_atr_len     = input.int  (14,   "ATR length",                      group="Risk")
+i_atr_mult    = input.float(2.0,  "Initial stop ATR multiplier",     group="Risk")
+i_swing_lb    = input.int  (10,   "Recent swing high lookback",      group="Risk")
+i_buffer_pct  = input.float(1.0,  "Buffer above swing high (%)",     group="Risk")
+i_max_stop    = input.float(15.0, "Max allowed initial stop %",      group="Risk")
+i_trail_lb    = input.int  (10,   "Trailing stop bars (recent high)", group="Risk")
+i_risk_pct    = input.float(1.5,  "Risk % of account per trade",     minval=0.1, maxval=10.0, group="Risk",
+     tooltip="Short squeezes are asymmetric — keep this tighter than long-side strategies.")
+i_max_pos_pct = input.float(15.0, "Max position % of equity",        minval=1.0, maxval=100.0, group="Risk")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 1 — VALUATION
+// ═══════════════════════════════════════════════════════════════════════════════
+f_mkt_cap     = request.financial(syminfo.tickerid, "MARKET_CAP_BASIC", "FQ",  ignore_invalid_symbol=true)
+f_revenue_ttm = request.financial(syminfo.tickerid, "TOTAL_REVENUE",    "TTM", ignore_invalid_symbol=true)
+f_op_inc_ttm  = request.financial(syminfo.tickerid, "OPER_INCOME",      "TTM", ignore_invalid_symbol=true)
+
+ps_ratio = not na(f_mkt_cap) and not na(f_revenue_ttm) and f_revenue_ttm > 0 ?
+             f_mkt_cap / f_revenue_ttm : na
+
+unprofitable = not na(f_op_inc_ttm) and f_op_inc_ttm < 0
+
+v1_rich      = not na(ps_ratio) and ps_ratio > i_ps_rich
+v1_unprof    = not na(ps_ratio) and ps_ratio > i_ps_unprof and unprofitable
+valuation_ok = v1_rich or v1_unprof
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 2 — DETERIORATION
+// ═══════════════════════════════════════════════════════════════════════════════
+rev_yoy_now   = not na(f_revenue_ttm) and not na(f_revenue_ttm[252]) and f_revenue_ttm[252] > 0 ?
+                  (f_revenue_ttm / f_revenue_ttm[252] - 1) * 100 : na
+rev_yoy_prior = not na(f_revenue_ttm[63]) and not na(f_revenue_ttm[63+252]) and f_revenue_ttm[63+252] > 0 ?
+                  (f_revenue_ttm[63] / f_revenue_ttm[63+252] - 1) * 100 : na
+
+d_decel   = not na(rev_yoy_now) and not na(rev_yoy_prior) and
+            (rev_yoy_prior - rev_yoy_now) >= i_decel_pp
+d_neg_op  = not na(f_op_inc_ttm) and f_op_inc_ttm < 0
+
+bench_close = request.security(i_benchmark, timeframe.period, close, ignore_invalid_symbol=true)
+stk_ret     = close[0] / close[i_rs_lb] - 1
+bench_ret   = not na(bench_close[i_rs_lb]) ? bench_close / bench_close[i_rs_lb] - 1 : na
+d_rs_weak   = not na(bench_ret) and stk_ret < bench_ret
+
+deterioration_ok = d_decel or d_neg_op or d_rs_weak
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYER 3 — TECHNICAL BREAKDOWN
+// ═══════════════════════════════════════════════════════════════════════════════
+sma50  = ta.sma(close, 50)
+sma200 = ta.sma(close, 200)
+atr    = ta.atr(i_atr_len)
+
+t_below_both    = close < sma50 and close < sma200
+t_death_cross   = sma50 < sma200
+t_ma_declining  = sma200 <= sma200[i_ma_slope_lb]
+t_break_low     = close < ta.lowest(low, i_break_lb)[1]
+vol_avg50       = ta.sma(volume, 50)
+t_vol_spike     = volume > vol_avg50 * i_vol_mult
+
+technical_ok = t_below_both and t_death_cross and t_ma_declining and t_break_low and t_vol_spike
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MACRO FILTER
+// ═══════════════════════════════════════════════════════════════════════════════
+spy_close = request.security("AMEX:SPY", timeframe.period, close, ignore_invalid_symbol=true)
+spy_sma   = request.security("AMEX:SPY", timeframe.period, ta.sma(close, i_macro_ma), ignore_invalid_symbol=true)
+vix_close = request.security("CBOE:VIX", timeframe.period, close, ignore_invalid_symbol=true)
+
+macro_calm = not na(spy_close) and not na(spy_sma) and not na(vix_close) and
+             spy_close > spy_sma and vix_close < i_vix_calm
+macro_ok   = not i_use_macro or not macro_calm
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPOSITE SIGNAL + STOP PLACEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+swing_high     = ta.highest(high, i_swing_lb)
+atr_stop       = close + atr * i_atr_mult
+swing_stop     = swing_high * (1 + i_buffer_pct / 100)
+stop_at_entry  = math.min(atr_stop, swing_stop)
+stop_pct       = (stop_at_entry - close) / close * 100
+stop_ok        = stop_pct <= i_max_stop
+
+short_signal   = valuation_ok and deterioration_ok and technical_ok and macro_ok and stop_ok
+
+// MACD crossover at top level (avoids stateful-function-inside-if bug)
+[macd_line, macd_sig, macd_hist] = ta.macd(close, 12, 26, 9)
+macd_cross_up = ta.crossover(macd_line, macd_sig)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+var float cur_stop     = na
+var bool  stop_lowered = false
+var label last_label   = na
+
+in_pos = strategy.position_size < 0
+
+// Reset on flat (must run BEFORE entry block)
+if not in_pos
+    cur_stop     := na
+    stop_lowered := false
+
+// ── Sizing: Van Tharp 1.5% risk, 15% notional cap ─────────────────────────────
+risk_per_share = stop_at_entry - close
+risk_dollars   = strategy.equity * i_risk_pct / 100
+qty_by_risk    = risk_per_share > 0 ? math.floor(risk_dollars / risk_per_share) : 0
+qty_by_cap     = close > 0 ? math.floor(strategy.equity * i_max_pos_pct / 100 / close) : 0
+trade_qty      = math.min(qty_by_risk, qty_by_cap)
+
+// ── Entry ─────────────────────────────────────────────────────────────────────
+if short_signal and not in_pos and trade_qty > 0
+    strategy.entry("Short", strategy.short, qty=trade_qty)
+    cur_stop     := stop_at_entry
+    stop_lowered := false
+
+// ── Stop management ───────────────────────────────────────────────────────────
+// - Trail stop down to recent N-bar high (only lowers stop, never raises it)
+// - Cover entirely on a close ABOVE 50-DMA (regime change)
+if in_pos
+    trail_candidate = ta.highest(high, i_trail_lb)
+    if not na(cur_stop) and trail_candidate < cur_stop
+        cur_stop     := trail_candidate
+        stop_lowered := true
+    // MACD bullish cross → tighten further to the high of THAT bar (early warning)
+    if macd_cross_up
+        if high < cur_stop
+            cur_stop     := high
+            stop_lowered := true
+    strategy.exit("Cover (stop)", from_entry="Short", stop=cur_stop)
+    if close > sma50
+        strategy.close("Short", comment="50-DMA reclaim")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════════════════════════════════════════
+ma50_color  = sma50 < sma200 ? color.orange : color.gray
+ma200_color = sma50 < sma200 and sma200 <= sma200[i_ma_slope_lb] ? color.red :
+              sma50 < sma200 ? color.orange : color.gray
+
+plot(sma50,  "50 SMA",  color=ma50_color,  linewidth=1)
+plot(sma200, "200 SMA", color=ma200_color, linewidth=2)
+
+plot(in_pos ? cur_stop : na, "Stop",
+     color = stop_lowered ? color.orange : color.red,
+     style = plot.style_linebr, linewidth = 2)
+
+bgcolor(in_pos ? color.new(color.maroon, 90) : na, title="In Short Position")
+
+plotshape(short_signal and not in_pos,
+     title    = "Short Signal",
+     style    = shape.triangledown,
+     location = location.abovebar,
+     color    = color.red,
+     text     = "SHORT",
+     size     = size.normal)
+
+// ─── Entry label ─────────────────────────────────────────────────────────────
+f_str(v) =>
+    na(v) ? "n/a" : str.tostring(math.round(v, 1))
+
+if short_signal and not in_pos
+    label.delete(last_label)
+    last_label := label.new(bar_index, high,
+         text  = "SHORT"                                                          +
+                 "\nStop: " + str.tostring(math.round(stop_at_entry, 2))         +
+                 "  SL%: "  + f_str(stop_pct) + "%"                              +
+                 "\nShares: " + str.tostring(trade_qty) +
+                 "  Risk: $" + str.tostring(math.round(trade_qty * risk_per_share, 0)) +
+                 " (" + str.tostring(i_risk_pct) + "%)"                          +
+                 "\n── Fund. ──"                                                  +
+                 "\nP/S: " + f_str(ps_ratio)                                     +
+                 "  Rev YoY: " + f_str(rev_yoy_now) + "%"                        +
+                 "\nUnprofit: " + (unprofitable ? "yes" : "no")                  +
+                 "  RS weak: "  + (d_rs_weak ? "yes" : "no"),
+         style = label.style_label_down,
+         color = color.new(color.red, 20),
+         textcolor = color.white,
+         size  = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERFORMANCE ANALYTICS TABLE
+// ═══════════════════════════════════════════════════════════════════════════════
+i_show_perf = input.bool(true, "Show performance table", group="Analytics")
+
+var array<float> trade_risks = array.new<float>()
+if strategy.position_size < 0 and strategy.position_size[1] >= 0 and not na(cur_stop)
+    risk_per_share_actual = cur_stop - strategy.position_avg_price
+    dollar_risk           = risk_per_share_actual * math.abs(strategy.position_size)
+    if dollar_risk > 0
+        array.push(trade_risks, dollar_risk)
+
+var table perf_tbl = table.new(position.top_left, 2, 11, border_width=1)
+
+f_perf_row(row, k, v, good) =>
+    table.cell(perf_tbl, 0, row, k, text_color=color.white,
+         bgcolor=color.new(color.gray, 70), text_size=size.small)
+    table.cell(perf_tbl, 1, row, v, text_color=color.white,
+         bgcolor = good ? color.new(color.green, 30) : color.new(color.gray, 50),
+         text_size=size.small)
+
+if i_show_perf and barstate.islast
+    table.clear(perf_tbl, 0, 0, 1, 10)
+    n        = strategy.closedtrades
+    wins     = 0
+    losses   = 0
+    gross_w  = 0.0
+    gross_l  = 0.0
+    sum_r    = 0.0
+    r_count  = 0
+    if n > 0
+        for i = 0 to n - 1
+            p = strategy.closedtrades.profit(i)
+            if p > 0
+                wins    += 1
+                gross_w += p
+            else if p < 0
+                losses  += 1
+                gross_l += math.abs(p)
+            if i < array.size(trade_risks)
+                r_dollar = array.get(trade_risks, i)
+                if r_dollar > 0
+                    sum_r   += p / r_dollar
+                    r_count += 1
+    win_rate = n > 0 ? wins / n * 100 : 0.0
+    pf       = gross_l > 0 ? gross_w / gross_l : na
+    avg_w    = wins   > 0 ? gross_w / wins     : 0.0
+    avg_l    = losses > 0 ? gross_l / losses   : 0.0
+    exp_pt   = n > 0 ? (gross_w - gross_l) / n : 0.0
+    avg_r    = r_count > 0 ? sum_r / r_count : 0.0
+    max_dd_p = strategy.initial_capital > 0 ?
+               strategy.max_drawdown / strategy.initial_capital * 100 : 0.0
+    net_p    = strategy.netprofit
+    net_pct  = strategy.initial_capital > 0 ? net_p / strategy.initial_capital * 100 : 0.0
+
+    f_perf_row(0,  "Trades",        str.tostring(n),                            n >= 20)
+    f_perf_row(1,  "Win rate",      str.tostring(math.round(win_rate, 1)) + "%", win_rate >= 45)
+    f_perf_row(2,  "Profit factor", na(pf) ? "n/a" : str.tostring(math.round(pf, 2)),
+                                     not na(pf) and pf >= 1.5)
+    f_perf_row(3,  "Expectancy ($)",str.tostring(math.round(exp_pt, 2)),         exp_pt > 0)
+    f_perf_row(4,  "Avg R",         str.tostring(math.round(avg_r, 2)),          avg_r > 0)
+    f_perf_row(5,  "Avg win ($)",   str.tostring(math.round(avg_w, 2)),          true)
+    f_perf_row(6,  "Avg loss ($)",  str.tostring(math.round(avg_l, 2)),          false)
+    f_perf_row(7,  "Net profit ($)",str.tostring(math.round(net_p, 2)),          net_p > 0)
+    f_perf_row(8,  "Net profit %",  str.tostring(math.round(net_pct, 1)) + "%",  net_pct > 0)
+    f_perf_row(9,  "Max DD %",      str.tostring(math.round(max_dd_p, 1)) + "%", max_dd_p < 20)
+    f_perf_row(10, "Open trades",   str.tostring(strategy.opentrades),           strategy.opentrades > 0)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTES
+// • DAILY chart, stocks only — software / high-multiple growth universe.
+// • Fundamental data (P/S, revenue, op income) comes from request.financial.
+//   For non-stock symbols (ETFs, crypto, forex) this will short ONLY on
+//   technical breakdown — review settings per asset class.
+// • This is the discretionary-grade short — pair with the screener for
+//   universe-wide candidate flagging.  Never override the stop manually.
+// • Pre-trade manual checks NOT modeled in script:
+//     - Short interest % of float  (skip if > 15%)
+//     - Borrow cost  (skip if > 8% annualized)
+//     - Days to next earnings  (skip if within 5 days)
+// • Initial sizing 1.5% — tighter than the long-side 2.5% by design.
+//   Short squeezes have unlimited tail loss — respect this.
+// ═══════════════════════════════════════════════════════════════════════════════
