@@ -34,6 +34,20 @@ MOMENTUM_15 = [
     "ANET", "CRWD", "DDOG",
 ]
 
+# High-multiple software / speculative growth — the natural universe for the
+# Overvalued Growth Breakdown short.  Mix of IGV constituents + standalone
+# speculative names.  Curated, not point-in-time — survivorship bias applies.
+EXPENSIVE_SOFTWARE = [
+    # AI / cloud SaaS (high P/S)
+    "CRWD", "DDOG", "NET", "MDB", "SNOW", "ZS", "PANW", "OKTA",
+    # Speculative / unprofitable growth
+    "PLTR", "S", "GTLB", "U", "AI", "PATH",
+    # Former darlings that crashed in 2022; included so backtest captures the unwind
+    "SHOP", "ZM", "DOCU", "TWLO", "ROKU", "TEAM", "WDAY", "NOW",
+    # AI-era leaders
+    "NVDA", "AVGO", "ARM",
+]
+
 def get(name: str) -> list[str]:
     """Return symbols for a named universe.
 
@@ -44,6 +58,7 @@ def get(name: str) -> list[str]:
     static = {
         "large25":    LARGE_CAP_25,
         "momentum15": MOMENTUM_15,
+        "expensive_software": EXPENSIVE_SOFTWARE,
     }
     if name in static:
         return static[name]

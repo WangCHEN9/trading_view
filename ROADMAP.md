@@ -38,7 +38,10 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Single-symbol backtest in TradingView | ✅ | Performance analytics table embedded in each `.pine` strategy |
 | Python multi-symbol harness (per-symbol) | ✅ | `backtest/` — yfinance data, vectorized signals, stateful execution, R-multiples. Run via `uv run python -m backtest.runner`. Baseline result on large25 / 10y: 57.7% WR, 1.40 avg R, 20/25 symbols profitable. |
 | Portfolio mode (shared equity + concurrent cap) | ❌ | Current harness runs N parallel single-symbol sims. Real portfolio needs one equity pool + max concurrent positions. |
-| Other strategies ported to Python | ❌ | Only `consolidation_breakout` ported so far; `minervini_sepa` and `weinstein_stage4_short` pending. Once ported, replace ESTIMATED sections in their docs with MEASURED numbers. |
+| Other strategies ported to Python | ✅ | All 4 strategies ported. Results: `consolidation_breakout` 1.41 avg R ✅; `minervini_sepa` 14% WR / -0.31 R ⚠️; `weinstein_stage4_short` 27.5% WR / -0.45 R ⚠️ (bull regime); `overvalued_growth_short` 35.6% WR / +0.02 R ✅ insurance. See `docs/backtest_results.md`. |
+| Fix minervini_sepa trail (chandelier → 50-DMA close) | ❌ | Single highest-value next change; current chandelier kills winners early. |
+| Date-range slicing in runner.py (`--start`/`--end`) | ❌ | Needed to isolate 2022 for shorts; lets us validate bear thesis. |
+| Add macro filter to weinstein_stage4_short | ❌ | Mirror overvalued_growth_short's SPY > 200-DMA gate; should haircut −$35K bull-regime bleed. |
 | Anti-overfitting practices (OOS / WFA / sensitivity / MC / random benchmark) | ❌ | See `docs/backtest_methodology.md` for the full list. Highest priority: time-based train/test split in `runner.py`, then slippage/commission, then walk-forward harness. |
 | Walk-forward / OOS split | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
 | Slippage + commission realism | ❌ | Add to backtest engine; TV strategy settings too |

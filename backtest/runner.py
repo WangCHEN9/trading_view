@@ -22,12 +22,39 @@ from . import data, universe, metrics
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
+# Strategies that need benchmark series (symbol → benchmark dict keys)
+STRATEGY_BENCHMARKS: dict[str, list[str]] = {
+    "consolidation_breakout":   [],
+    "minervini_sepa":           ["SPY"],
+    "weinstein_stage4_short":   [],
+    "overvalued_growth_short":  ["SPY", "IGV", "VIX"],
+}
+
+BENCHMARK_TICKERS = {
+    "SPY": "SPY",
+    "IGV": "IGV",
+    "VIX": "^VIX",
+}
+
 
 def _load_strategy(name: str):
     mod = importlib.import_module(f"backtest.strategies.{name}")
     if not hasattr(mod, "backtest"):
         raise SystemExit(f"Strategy module '{name}' missing backtest() entry point")
     return mod
+
+
+def _fetch_benchmarks(needed: list[str], interval: str, period: str,
+                      refresh: bool) -> dict[str, "pd.DataFrame"]:
+    out = {}
+    for name in needed:
+        ticker = BENCHMARK_TICKERS[name]
+        df = data.load(ticker, interval=interval, period=period, force_refresh=refresh)
+        if df.empty:
+            print(f"[runner] WARNING: benchmark {name} ({ticker}) is empty; strategy will degrade")
+        else:
+            out[name] = df
+    return out
 
 
 def main():
@@ -51,6 +78,11 @@ def main():
     strat = _load_strategy(args.strategy)
     params = strat.Params(initial_equity=args.initial_equity)
 
+    needed_bench = STRATEGY_BENCHMARKS.get(args.strategy, [])
+    benchmarks   = _fetch_benchmarks(needed_bench, args.interval, args.period, args.refresh)
+    if needed_bench:
+        print(f"[runner] fetched benchmarks: {list(benchmarks)}")
+
     all_stats:  list[metrics.PerfStats] = []
     all_trades: list[dict]              = []
 
@@ -58,7 +90,11 @@ def main():
                           force_refresh=args.refresh)
 
     for sym, df in bars.items():
-        result = strat.backtest(df, params)
+        # Pass benchmarks if the strategy signature accepts them
+        try:
+            result = strat.backtest(df, params, benchmarks=benchmarks)
+        except TypeError:
+            result = strat.backtest(df, params)
         for t in result["trades"]:
             t["symbol"] = sym
         all_trades.extend(result["trades"])

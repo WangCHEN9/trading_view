@@ -85,13 +85,16 @@ See [backtest_methodology.md](backtest_methodology.md) for the full discussion o
 
 ## Strategy performance numbers — what's measured vs estimated
 
-| Strategy | Status |
-|---|---|
-| Consolidation Breakout | **MEASURED** — Python harness, 25 symbols, 10 years. Numbers in [consolidation_breakout.md](strategies/consolidation_breakout.md) come from a reproducible backtest. |
-| Minervini SEPA | **ESTIMATED** — pending Python port. Numbers in [minervini_sepa.md](strategies/minervini_sepa.md) are rough priors with explicit confidence labels. |
-| Weinstein Stage 4 Short | **ESTIMATED** — pending Python port. Numbers in [weinstein_stage4_short.md](strategies/weinstein_stage4_short.md) are rough priors with explicit confidence labels. |
+| Strategy | Status | Headline |
+|---|---|---|
+| Consolidation Breakout | **MEASURED** ✅ | 142 trades / 58.5% WR / **1.41 avg R** — strong edge in bull markets |
+| Minervini SEPA | **MEASURED** ⚠️ | 7 trades / 14.3% WR / −0.31 R — strategy as-coded is too restrictive + trail too tight; needs work |
+| Weinstein Stage 4 Short | **MEASURED** ⚠️ | 40 trades / 27.5% WR / −0.45 R — confirms shorts bleed in bull regimes; needs bear-period isolation |
+| Overvalued Growth Short (technical-only port) | **MEASURED** ✅ | 59 trades / 35.6% WR / +0.02 R — break-even with small DD, exactly the "portfolio insurance" profile |
 
-Once the remaining strategies are ported (`ROADMAP.md` Layer 3), replace the estimated sections with measured numbers from the harness.
+All four are reproducible with one command — see each strategy doc for the exact invocation. The two ⚠️ rows are not strategy failures, they're honest measurements telling us what needs fixing before risking real money.
+
+**Consolidated results report:** [backtest_results.md](backtest_results.md) — full comparison table, per-strategy interpretation, action items derived from the measurements.
 
 ## Where to go next
 

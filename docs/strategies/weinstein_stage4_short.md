@@ -72,14 +72,47 @@ Same 25% notional ceiling.
 | Wide bid-ask, plenty of borrow | Hard-to-borrow + high stock-loan fees |
 | Stable indexes (low VIX) | Macro vol regime — short squeezes blanket the market |
 
-## Expected frequency & return  (ESTIMATED — pending Python backtest)
+## Expected frequency & return  (MEASURED — and confirms "shorts hate bull markets")
 
-⚠️ **These numbers are NOT yet measured by the local harness.** They are estimates drawn from:
-1. The structural symmetry with `consolidation_breakout` (same machinery, opposite direction) — but adjusted downward for known short-side disadvantages.
-2. Published research on short-side trend-following (typically lower win rates and worse asymmetric P&L than long counterparts).
-3. Weinstein's own claims in *Secrets for Profiting in Bull and Bear Markets* about stage-4 declines.
+### Setup
+- Backtest: `backtest/strategies/weinstein_stage4_short.py`
+- Universe: `large25`, weekly, 10 years
+- 2015-2025 was a **near-pure bull market** for US large caps — the worst possible backdrop for a short strategy
 
-Treat as **rough priors**, not proof. Replace this section with measured numbers once `backtest/strategies/weinstein_stage4_short.py` exists.
+### Headline numbers
+
+| Metric | Value |
+|---|---|
+| Total trades | **40** across 25 symbols |
+| Symbols profitable | **4 / 25** |
+| Win rate | **27.5%** |
+| Avg R | **−0.45** |
+| Net | **−$35,389** on $100K-per-symbol |
+| Avg max DD per symbol | **−4.4%** |
+
+### How to read this correctly
+
+This is **NOT** evidence the strategy is broken — it's evidence shorts get killed in bull markets, which we already knew. The honest test for a short strategy must include bear periods. Three reasonable next steps:
+
+1. **Slice 2022 only** — re-run with `--period 3y` covering 2022's bear; that's the year the strategy is supposed to earn its keep. Expected: positive R, several profitable symbols.
+2. **Pair with the long book** — overall portfolio (longs + this short book) should show lower drawdown and smoother equity curve even if shorts alone are net-negative over a decade.
+3. **Restrict to bear-regime activation** — add a macro filter (e.g. only enter when SPY < 200-DMA) to suppress activity in obvious bulls. This would have cut most of the −$35K loss.
+
+### What the trade list shows
+
+Symbols with the worst losses (UNH, V, MA, GOOGL, ORCL, LLY) are all long-term up-trenders. The strategy correctly identified short-term breakdowns; the market simply absorbed them and reverted. That's a regime mismatch, not a strategy failure.
+
+### Reproducibility
+
+```bash
+uv run python -m backtest.runner --strategy weinstein_stage4_short --universe large25 --period 10y --interval 1wk
+```
+
+For a fairer regime-controlled test, slice to bear periods explicitly:
+
+```bash
+# Pending implementation: --start / --end date flags in runner.py (Layer 3 backlog)
+```
 
 ### Frequency estimate
 

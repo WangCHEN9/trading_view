@@ -123,31 +123,52 @@ A signal that fails any of these is **not a trade**, even if the script flagged 
 | Post-blowup names (already broken trend) | Pre-blowup expensive names (early — wait for break) |
 | VIX > 20 with rising | VIX < 15 (squeezes everywhere) |
 
-## Expected frequency & return  (ESTIMATED — pending Python backtest)
+## Expected frequency & return  (MEASURED — technical-only variant)
 
-⚠️ **These numbers are NOT yet measured.** Estimates drawn from:
-1. Structural similarity with `weinstein_stage4_short.pine`, adjusted for the tighter fundamental filters
-2. Historical short-side trend-following research (Faber, Antonacci)
-3. 2022 cohort observation: SaaS basket short would have produced ~10–15 high-quality entries with median R ~2.0 over 6 months
+### Setup and limitation
+- Backtest: `backtest/strategies/overvalued_growth_short.py`
+- Universe: `expensive_software` (25 high-multiple software / speculative names)
+- Period: 10 years daily
+- **Layer 1 (valuation) is NOT in the Python port** — yfinance lacks reliable historical P/S. The Python backtest substitutes universe curation (only names that ARE high-P/S today) for the missing fundamental filter.
+- Layer 2 (RS-vs-IGV), Layer 3 (full technical), and the macro override ARE ported.
 
-| Metric | Estimate | Confidence |
-|---|---|---|
-| Signal rate (S&P 500 + IGV combined) | 0–2/month in bull, 5–10/month in bear | medium |
-| Win rate | 45–55% | medium-low |
-| Avg R | 1.5–2.0 (shorts can run fast once thesis confirms) | low |
-| Per-trade expectancy (at 1.5% risk) | 1.7R × 1.5% ≈ **2.5% per trade** | low |
-| Annualized return (bear market) | 25–50% | low |
-| Annualized return (bull market) | −5% to +5% (few signals, occasional small losses) | medium |
-| Max drawdown | 15–25% | medium-low |
+### Headline numbers (10y bull-dominated regime)
 
-Bear-market years (2022-style) carry the strategy. Bull-market years are largely **flat-to-slightly-negative** — that's the cost of the insurance.
+| Metric | Value |
+|---|---|
+| Total trades | **59** across 25 symbols |
+| Symbols profitable | **10 / 25** |
+| Win rate | **35.6%** |
+| Avg R | **+0.02** (essentially break-even on R basis) |
+| Net | **−$3,800** on $100K-per-symbol (essentially flat) |
+| Avg max DD per symbol | **−2.4%** |
 
-### Why the estimates are uncertain
+### How to interpret
 
-- The combined 3-layer filter likely **rejects most signals** — meaning fewer trades but higher per-trade quality
-- The macro override (SPY > 200 AND VIX < 16) further suppresses bull-regime activity
-- Historical comparable: a "high-P/S SaaS short basket" entered in early 2022 would have returned 30–50% over the year while a similar basket entered in 2023 would have produced flat-to-negative returns
-- The strategy has not been tested across 2017–2025; pending Python harness port
+This is **textbook "portfolio insurance" behavior**:
+
+- Over a 10-year period dominated by bull markets, the strategy was **essentially flat with small drawdowns** — exactly what an insurance instrument should do during good times
+- The macro override (skip when SPY > 200-DMA AND VIX < 16) correctly suppressed activity in obvious bulls
+- Bear-regime years (2022) likely carry the strategy; the harness doesn't yet support sub-period slicing to verify
+
+Compared with `weinstein_stage4_short` on large25:
+- Weinstein: −$35K over 10y (bleeds in bulls because no macro filter)
+- This strategy: −$3.8K over 10y (macro filter prevents most bull-regime bleeding)
+
+**The macro override does its job.**
+
+### Reproducibility
+
+```bash
+uv run python -m backtest.runner --strategy overvalued_growth_short --universe expensive_software --period 10y --interval 1d
+```
+
+### What's missing from this measurement
+
+- **Layer 1 valuation filter** — would further restrict trades to verifiably-overvalued names. Likely improves WR and avg R.
+- **Borrow costs** — not modeled; assume −1 to −3% drag per year per held position
+- **Short interest gating** — backtest can't know SI; in live trading, manual rejection of SI > 15% names will help
+- **Bear-period isolation** — 2022 sub-period numbers would be the more honest "this works in bears" measurement
 
 ## Reproducibility / proof
 

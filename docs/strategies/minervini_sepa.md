@@ -71,48 +71,52 @@ Initial stop distance = `2 × ATR(14)`, so position size scales inversely with t
 | Stocks emerging from 6–12 month bases | Stocks already 50%+ extended above 50-SMA |
 | Earnings beats followed by tight basing | Pre-earnings drift up — defer entry |
 
-## Expected frequency & return  (ESTIMATED — pending Python backtest)
+## Expected frequency & return  (MEASURED — and worse than estimates)
 
-⚠️ **These numbers are NOT yet measured by the local harness.** They are estimates drawn from:
-1. Minervini's published claims in *Trade Like a Stock Market Wizard* (1997 US Investing Champion: 155% return; 2021: 334%) — these are his *personal* numbers, not the mechanical script's.
-2. Independent academic / blog backtests of trend-template + VCP variants.
-3. Forward-reasoning from the strategy's structural parameters.
+### Setup
+- Backtest: `backtest/strategies/minervini_sepa.py`
+- Universe: `momentum15` (15 high-momentum names — the strategy's natural habitat)
+- Period: 10 years daily
+- VCP measurement corrected (excludes breakout bar) vs literal Pine port
+- Frictions: none modeled
 
-Treat them as **rough priors**, not proof. Replace this section with measured numbers once `backtest/strategies/minervini_sepa.py` exists.
+### Headline numbers
 
-### Frequency estimate
+| Metric | Value |
+|---|---|
+| Total trades | **7** across 15 symbols / 10 years |
+| Symbols profitable | **1 / 15** |
+| Win rate | **14.3%** |
+| Avg R | **−0.31** |
+| Net | **−$4,770** on $100K-per-symbol |
 
-- **Universe basis:** S&P 500, daily timeframe
-- The full 7/8 trend template typically passes for **30–80 names at any given time** in a bull market, **5–20** in a sideways tape, near **zero** in a confirmed bear market.
-- Of currently-passing names, VCP + pivot break + volume fires roughly **0.5–2% per day**.
-- Estimated signal rate: **3–10 signals per week** across the S&P 500 in a bull market; **0–2 per week** in choppy / bear conditions.
-- Per-symbol trade rate: **1–4 trades per year** for actively-trending names; many names will produce zero signals their entire backtest.
+### Why the measured result is bad
 
-### Return estimate
+This is an **honest negative result**. Two structural problems revealed by the backtest:
 
-| Metric | Estimate | Confidence |
-|---|---|---|
-| Win rate | 45–55% | medium |
-| Avg R | 1.5–2.5 (winners run much longer than losers) | medium-low |
-| Per-trade expectancy (at 2.5% risk) | 1.5R × 2.5% ≈ **3.75% per trade** | low |
-| Annualized return (bull market) | **30–60%** | low |
-| Annualized return (bear market) | **−5% to +5%** (sits flat in cash) | medium |
-| Max drawdown | **15–25%** typical | medium |
+1. **VCP filter is extremely selective.** Across 15 high-momentum names over 10 years it fires only 7 times. The strategy is hyper-selective by design but the selectivity does not produce winners often enough to overcome the tight stop.
 
-The wide ranges reflect that *we have not measured this yet*. Minervini's strategy has unusually fat-tailed winners (single trades up 100%+ that drive total return), so the avg-R figure is highly path-dependent.
+2. **Tight initial stop + chandelier trail.** `entry − 2×ATR` initial stop combined with a 21-bar chandelier trail tightens fast. The bar after a Minervini-style pivot break commonly retraces 30-50% of the breakout move on profit-taking — a 2×ATR stop sits exactly in that zone. Most signals stop out before the move begins.
 
-### Proof — currently unavailable in this repo
+### What this means practically
 
-To produce real numbers:
+Either:
+- **The script as-coded needs tuning** — Minervini himself trails wider (50-DMA), not chandelier. Initial stop is correct; the trail is too tight.
+- **OR the strategy needs the discretionary review layer it traditionally relies on** — Minervini personally rejects 90%+ of mechanically-flagged setups based on chart pattern quality. The mechanical filter alone is insufficient.
+
+### Recommended next steps before risking capital
+
+1. Backtest with the trail switched to "close < 50-DMA" instead of chandelier — likely materially better
+2. Run on a larger universe (S&P 500) where the wider sample size will tell us if the edge exists at all in a mechanical form
+3. Run on individual symbols in TradingView and manually inspect each entry / exit — does the mechanical entry match Minervini's qualitative criteria? If not, the script is not Minervini.
+
+### Reproducibility
 
 ```bash
-# NOT YET IMPLEMENTED
-uv run python -m backtest.runner --strategy minervini_sepa --universe sp500 --period 10y --interval 1d
+uv run python -m backtest.runner --strategy minervini_sepa --universe momentum15 --period 10y --interval 1d
 ```
 
-Pending: port of the strategy from Pine to Python in `backtest/strategies/minervini_sepa.py`. Tracked in `ROADMAP.md` Layer 3.
-
-**Interim "proof":** run the `.pine` strategy in TradingView on individual liquid large-caps (AAPL, NVDA, AMD, META, COST) over 5–10 years. The embedded performance table reports per-symbol win rate, profit factor, avg R, and max DD. Log results across 10–20 names and compare to the estimates above. If your single-symbol numbers cluster within these ranges, the priors are reasonable; if they're systematically worse, adjust expectations down.
+Outputs `backtest/results/minervini_sepa_momentum15_summary.csv` and `_trades.csv`. **This negative result is a feature** of the methodology: better to learn the strategy is broken in backtest than in live trading.
 
 ## Pair with
 
