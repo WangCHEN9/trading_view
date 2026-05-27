@@ -31,6 +31,7 @@ class Params:
     buffer_pct:      float = 1.0
     max_stop_pct:    float = 20.0
     trail_ma_len:    int   = 20
+    avwap_exit_bars: int   = 2     # require N consecutive closes below aVWAP before exit
     risk_pct:        float = 2.5
     max_pos_pct:     float = 25.0
     initial_equity:  float = 100_000.0
@@ -151,9 +152,19 @@ def backtest(df: pd.DataFrame, params: Params = Params(),
                 sm = float(sma_t.iloc[i])
                 if not np.isnan(sm) and sm > cur_stop:
                     cur_stop = sm
-                # aVWAP break — immediate exit at close
+                # aVWAP break — require N consecutive closes below aVWAP to exit
                 av = float(avwap.iloc[i])
-                if not np.isnan(av) and bar_c < av:
+                below_count = 0
+                if not np.isnan(av):
+                    for k in range(int(p.avwap_exit_bars)):
+                        if i - k < 0:
+                            break
+                        ck = float(c.iloc[i - k])
+                        avk = float(avwap.iloc[i - k])
+                        if np.isnan(avk) or ck >= avk:
+                            break
+                        below_count += 1
+                if below_count >= int(p.avwap_exit_bars):
                     pnl    = (bar_c - entry_price) * qty
                     r_mult = pnl / ((entry_price - entry_stop) * qty) if (entry_price - entry_stop) > 0 else np.nan
                     trades.append({

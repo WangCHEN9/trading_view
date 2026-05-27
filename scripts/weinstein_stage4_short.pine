@@ -39,7 +39,8 @@ i_max_pos_pct  = input.float(25.0, "Max position % of equity",        minval=1.0
 
 i_use_macro    = input.bool (true, "Enable macro filter",             group="Macro",
      tooltip="Skip new shorts when SPY is above its 200-DMA — avoids fighting obvious bull regimes.")
-i_macro_ma     = input.int  (200,  "SPY MA length (calm regime)",     group="Macro")
+i_macro_ma     = input.int  (40,   "SPY MA length (weeks ~ 200 days)", group="Macro",
+     tooltip="On a weekly chart, 40 weeks ~= 200 days = conventional 'market in uptrend' filter.  200 here would mean 200 weeks (~4y) which is wrong.")
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CORE INDICATORS

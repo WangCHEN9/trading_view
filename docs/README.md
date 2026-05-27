@@ -86,15 +86,17 @@ See [backtest_methodology.md](backtest_methodology.md) for the full discussion o
 
 ## Strategy performance numbers — what's measured vs estimated
 
-**Latest numbers — SP500 universe + 5bps slippage + $1/fill commission**:
+**Latest portfolio-mode numbers** (single $100K account, max 6 concurrent positions, 5bps + $1/fill frictions, SP500 universe, 10y):
 
-| Strategy | Status | Headline (SP500, frictions applied) |
-|---|---|---|
-| Consolidation Breakout | ✅ **MEASURED — tradeable** | 2914 trades / 42.1% WR / **+0.30 R** → ~15–25% annualized after constraints |
-| Minervini SEPA (0.8 VCP) | ✅ **MEASURED — tradeable** | 871 trades / 33.6% WR / **+0.33 R** → ~8–15% annualized net |
-| Weinstein Stage 4 Short | 🔴 **DO NOT TRADE** | 476 trades / 31.3% WR / **−0.24 R** — entry conditions too restrictive even on full SP500 |
-| Overvalued Growth Short | ✅ **MEASURED — insurance only** | 59 trades / 35.6% WR / **+0.01 R** → flat in bulls, +$337 in 2022 alone |
-| Anchored VWAP Pullback | 🟡 **MEASURED — marginal** | 486 trades / 43.4% WR / **+0.04 R** → barely positive; needs tuning (aVWAP-break exit too sensitive) |
+| Strategy | Status | **Single-account CAGR** | vs SPY (~13% same period) |
+|---|---|---|---|
+| Consolidation Breakout | ✅ tradeable | **13.1%** | matches |
+| Minervini SEPA (0.8 VCP) | 🟡 underperforms | 6.2% | −7 pp |
+| Anchored VWAP Pullback | 🟡 underperforms | 4.7% | −8 pp |
+| Weinstein Stage 4 Short | 🔴 **DO NOT TRADE** | n/a (loses money) | n/a |
+| Overvalued Growth Short | ✅ insurance only | n/a (≈flat) | designed to ≈0 in bulls |
+
+Detailed table including per-symbol stats and reproduction commands in [backtest_results.md](backtest_results.md).
 
 All four are reproducible with one command — see each strategy doc for the exact invocation. The two ⚠️ rows are not strategy failures, they're honest measurements telling us what needs fixing before risking real money.
 

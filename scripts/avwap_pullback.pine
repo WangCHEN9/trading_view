@@ -40,6 +40,8 @@ i_buffer_pct   = input.float(1.0,  "Stop buffer below anchor (%)", group="Risk")
 i_max_stop     = input.float(20.0, "Max allowed initial stop %",   group="Risk")
 i_trail_ma_len = input.int  (20,   "Trailing MA length",           group="Risk",
      tooltip="Exit when close < this SMA (additional discretionary trail).")
+i_avwap_exit_bars = input.int(2,   "aVWAP-break confirmation bars", group="Risk", minval=1, maxval=5,
+     tooltip="Require N consecutive closes below aVWAP before exiting on aVWAP break.")
 i_risk_pct     = input.float(2.5,  "Risk % of account per trade",  minval=0.1, maxval=10.0, group="Risk")
 i_max_pos_pct  = input.float(25.0, "Max position % of equity",     minval=1.0, maxval=100.0, group="Risk")
 
@@ -102,9 +104,13 @@ if in_pos
     if sma_t > cur_stop
         cur_stop := sma_t
     strategy.exit("Stop", from_entry="Long", stop=cur_stop)
-    // Discretionary exits — close below aVWAP = regime change
-    if close < avwap
-        strategy.close("Long", comment="aVWAP break")
+    // aVWAP-break exit with N-bar confirmation (avoid single-close false signals)
+    avwap_break = close < avwap
+    for k = 1 to 4
+        if k < i_avwap_exit_bars
+            avwap_break := avwap_break and close[k] < avwap[k]
+    if avwap_break
+        strategy.close("Long", comment="aVWAP break (" + str.tostring(i_avwap_exit_bars) + "-bar)")
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PLOTS

@@ -48,7 +48,11 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Slippage + commission in engine | ✅ | `--slippage-bps` and `--commission` CLI flags on runner.py. Applied post-trade. Long-hold strategies absorb frictions; short strategies more sensitive. |
 | Loosen Weinstein entry conditions | ❌ | 0 trades in 2022 on SP500 means the 10-condition filter is too restrictive. Likely culprit: NATR + wick filter conflict with bear-market high-vol candles. |
 | Implement VWAP-related strategy | ✅ | `scripts/avwap_pullback.pine` + Python port. Brian Shannon anchored-VWAP framework with mechanical lowest-low anchor. SP500/10y/frictions result: 486 trades, 43.4% WR, +0.04 R — marginal. aVWAP-break exit too sensitive; needs 2-bar confirmation tuning. |
-| Improve aVWAP exit (add multi-bar confirmation) | ❌ | Highest-priority follow-up; current single-close break exits too early. |
+| Improve aVWAP exit (2-bar confirmation) | ✅ | Default avwap_exit_bars=2 in both Pine and Python. Result: +0.04 → +0.05 R — minimal impact. Entry quality is the real bottleneck, not exit. |
+| Weinstein diagnostic (find blocking condition) | ✅ | Found the bug: macro_ma=200 on weekly chart = 200 WEEKS (~4y), wrong. Pine has same bug. Fixed to 40 (= ~200 days). After fix: strategy fires 507 trades over 10y but still −0.50 R / 21.9% WR. Strategy is fundamentally broken — shorts at 10-week lows = catching falling knives. Marked DO NOT TRADE. |
+| Portfolio mode (shared equity + concurrent cap) | ✅ | `backtest/portfolio.py` — single equity pool, max-N concurrent positions, frictions. CAGR results: consolidation_breakout 13.1%, minervini_sepa 6.2%, avwap_pullback 4.7%. Honest single-account numbers replace inflated parallel-sim aggregates. |
+| Redesign Weinstein OR remove it | ❌ | The 10-condition breakdown entry is fundamentally low-quality. Either rework with proper Stage-3-to-Stage-4 transition detection or remove from repo. |
+| Drawdown comparison vs buy-and-hold SPY | ❌ | consolidation_breakout matches SPY on CAGR; needs DD comparison to justify running over passive buy-and-hold. |
 | Anti-overfitting practices (OOS / WFA / sensitivity / MC / random benchmark) | ❌ | See `docs/backtest_methodology.md` for the full list. Highest priority: time-based train/test split in `runner.py`, then slippage/commission, then walk-forward harness. |
 | Walk-forward / OOS split | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
 | Slippage + commission realism | ❌ | Add to backtest engine; TV strategy settings too |

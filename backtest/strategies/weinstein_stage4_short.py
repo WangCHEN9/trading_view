@@ -33,7 +33,7 @@ class Params:
     risk_pct:       float = 2.5
     max_pos_pct:    float = 25.0
     use_macro:      bool  = True
-    macro_ma:       int   = 200
+    macro_ma:       int   = 40    # weeks (~200 days). Original default of 200 weeks (~4y) was wrong for weekly TF.
     initial_equity: float = 100_000.0
 
 

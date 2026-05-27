@@ -10,7 +10,39 @@ Each row below is reproducible by re-running the command shown. CSVs written to 
 
 ---
 
-## Headline summary — latest measurements
+## ⭐ Portfolio mode — the honest single-account numbers
+
+The "headline summary" table below shows per-symbol simulations (each starts with its own $100K). **Real-world expectation is the portfolio simulation here**: one shared equity pool, max 6 concurrent positions, frictions applied.
+
+| Strategy | Universe | TF | Trades | Acceptance | WR | Avg R | **CAGR** | Final equity |
+|---|---|---|---|---|---|---|---|---|
+| **consolidation_breakout** | sp500 | 1wk | 215 | 7.4% | 37.7% | 0.39 | **13.1%** | $317K |
+| **minervini_sepa** (0.8 VCP) | sp500 | 1d | 364 | 41.8% | 29.1% | 0.19 | 6.2% | $171K |
+| **avwap_pullback** | sp500 | 1d | 316 | 65.4% | 49.1% | 0.05 | 4.7% | $140K |
+
+**Buy-and-hold SPY same period:** ~13% CAGR. So:
+- `consolidation_breakout` **matches SPY on raw return** — only worth running if drawdown profile is meaningfully better (TODO: measure DD vs SPY)
+- `minervini_sepa` and `avwap_pullback` **underperform** buy-and-hold by 7–8 pp/year
+
+Reproduce with:
+```bash
+uv run python -m backtest.portfolio --strategy consolidation_breakout --universe sp500 \
+     --period 10y --interval 1wk --max-positions 6 --slippage-bps 5 --commission 1
+```
+
+### Concurrency sensitivity on consolidation_breakout
+
+| Max concurrent | Trades | Avg R | CAGR | Rejected (no capital) |
+|---|---|---|---|---|
+| 4 | 145 | 0.39 | 9.2% | 2,769 (95%) |
+| **6** | **215** | **0.39** | **13.1%** | **2,699 (93%)** |
+| 10 | 359 | 0.25 | 11.8% | 2,555 (88%) |
+
+Higher concurrency dilutes avg R (you start taking lower-quality signals). Sweet spot ≈ 6. **93% of candidate signals get rejected** because capital is full — this is the gap between "edge per trade" and "what a real account can capture."
+
+---
+
+## Headline summary — per-symbol measurements
 
 **Now with realistic frictions (5bps slippage + $1/fill commission) and full S&P 500 universe** where applicable.
 
@@ -21,11 +53,11 @@ Each row below is reproducible by re-running the command shown. CSVs written to 
 | consolidation_breakout (reference) | large25 | 1wk | 10y | 142 | 58.5% | +1.39 | ⚠️ survivorship-inflated 4× |
 | **minervini_sepa** *(0.8 VCP + 50-DMA trail)* | **sp500** | 1d | 10y | **871** | 33.6% | **+0.33** | ✅ small positive edge across universe |
 | minervini_sepa | momentum15 | 1d | 10y | 49 | 42.9% | +0.69 | ✅ stronger on selected high-mo names |
-| **weinstein_stage4_short** *(macro filter)* | sp500 | 1wk | 10y | 476 | 31.3% | **−0.24** | 🔴 entry too restrictive + bull regime |
-| weinstein_stage4_short | sp500 | 1wk | 2022 only | **0** | — | — | 🔴 entry filter blocks even bear-period signals |
+| **weinstein_stage4_short** *(macro 40w fix)* | sp500 | 1wk | 10y | 507 | 21.9% | **−0.50** | 🔴 DO NOT TRADE — strategy fundamentally broken |
+| weinstein_stage4_short | sp500 | 1wk | 2022 only | 212 | 25.0% | −0.43 | 🔴 loses in 2022 bear too — fix needed |
 | **overvalued_growth_short** | expensive_software | 1d | 10y | 59 | 35.6% | +0.01 | ✅ insurance profile holds with frictions |
 | overvalued_growth_short | expensive_software | 1d | 2022 only | 18 | 44.4% | 0.00 | ✅ bear-period profitable in dollars (+$337) |
-| **avwap_pullback** | sp500 | 1d | 10y | 486 | 43.4% | **+0.04** | 🟡 marginal; aVWAP-break exit too sensitive, needs tuning |
+| **avwap_pullback** *(2-bar aVWAP exit)* | sp500 | 1d | 10y | 483 | 44.9% | **+0.05** | 🟡 marginal — 2-bar exit barely helps (+0.01 R); entry quality is the issue |
 
 ### Real-world expectancy estimates
 
