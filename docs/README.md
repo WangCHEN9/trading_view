@@ -10,6 +10,7 @@ This folder explains each strategy and screener: what it does, why, and what to 
 | [Minervini SEPA](strategies/minervini_sepa.md) | `scripts/minervini_sepa.pine` | Daily | LONG |
 | [Weinstein Stage 4 Short](strategies/weinstein_stage4_short.md) | `scripts/weinstein_stage4_short.pine` | Weekly | SHORT |
 | [Overvalued Growth Breakdown Short](strategies/overvalued_growth_short.md) | `scripts/overvalued_growth_short.pine` | Daily | SHORT |
+| [Anchored VWAP Pullback](strategies/avwap_pullback.md) | `scripts/avwap_pullback.pine` | Daily | LONG |
 
 All three use **Van Tharp fixed-fractional 2.5% risk sizing** with a 25% notional ceiling. See each doc's *Position sizing* section.
 
@@ -93,6 +94,7 @@ See [backtest_methodology.md](backtest_methodology.md) for the full discussion o
 | Minervini SEPA (0.8 VCP) | ✅ **MEASURED — tradeable** | 871 trades / 33.6% WR / **+0.33 R** → ~8–15% annualized net |
 | Weinstein Stage 4 Short | 🔴 **DO NOT TRADE** | 476 trades / 31.3% WR / **−0.24 R** — entry conditions too restrictive even on full SP500 |
 | Overvalued Growth Short | ✅ **MEASURED — insurance only** | 59 trades / 35.6% WR / **+0.01 R** → flat in bulls, +$337 in 2022 alone |
+| Anchored VWAP Pullback | 🟡 **MEASURED — marginal** | 486 trades / 43.4% WR / **+0.04 R** → barely positive; needs tuning (aVWAP-break exit too sensitive) |
 
 All four are reproducible with one command — see each strategy doc for the exact invocation. The two ⚠️ rows are not strategy failures, they're honest measurements telling us what needs fixing before risking real money.
 

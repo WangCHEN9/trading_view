@@ -1,0 +1,224 @@
+//@version=6
+strategy("Anchored VWAP Pullback  [LONG / Daily]",
+     overlay               = true,
+     default_qty_type      = strategy.fixed,
+     default_qty_value     = 1,
+     calc_on_every_tick    = false,
+     pyramiding            = 0,
+     initial_capital       = 100000)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANCHORED VWAP PULLBACK  (Brian Shannon / Faber-style swing setup)
+//
+// Thesis: in a confirmed uptrend, institutional traders defend the anchored-
+// VWAP from the cycle low as a structural support.  Buying at the aVWAP after
+// a pullback gives high reward/risk with a tight, defensible stop just below
+// the anchor itself.
+//
+// Anchor logic (mechanical proxy for Shannon's discretionary anchor):
+//   • The anchor is the LOWEST LOW seen so far in the data history.
+//   • If a new lower low is made, the anchor moves to that new bar.
+//   • aVWAP = cumulative (HLC3 × volume) / cumulative volume, from anchor.
+//
+// Entry (all must be true on the signal bar):
+//   1. Trend up: close > 50-DMA, close > 200-DMA, 50-DMA > 200-DMA
+//   2. Price currently above aVWAP (trend-aligned)
+//   3. Pullback occurred: price touched within X% of aVWAP in last N bars
+//   4. Bounce candle: close > open AND close > prior close AND close > prior high
+//
+// Stop: anchor_low × (1 − buffer%)  — below the structural cycle bottom
+// Exit: stop hit, OR close < aVWAP (regime change), OR close < 20-DMA (trail)
+// Sizing: Van Tharp 2.5% risk, 25% notional cap
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_pullback_pct = input.float(2.0,  "Max % above aVWAP to count as pullback", group="Entry",
+     tooltip="Price must come within this % of aVWAP for entry to be considered.")
+i_pullback_lb  = input.int  (5,    "Pullback lookback (bars)",  group="Entry",
+     tooltip="How many bars back to look for a pullback touch before entry.")
+i_buffer_pct   = input.float(1.0,  "Stop buffer below anchor (%)", group="Risk")
+i_max_stop     = input.float(20.0, "Max allowed initial stop %",   group="Risk")
+i_trail_ma_len = input.int  (20,   "Trailing MA length",           group="Risk",
+     tooltip="Exit when close < this SMA (additional discretionary trail).")
+i_risk_pct     = input.float(2.5,  "Risk % of account per trade",  minval=0.1, maxval=10.0, group="Risk")
+i_max_pos_pct  = input.float(25.0, "Max position % of equity",     minval=1.0, maxval=100.0, group="Risk")
+
+// ─── Core indicators ─────────────────────────────────────────────────────────
+sma50  = ta.sma(close, 50)
+sma200 = ta.sma(close, 200)
+sma_t  = ta.sma(close, i_trail_ma_len)
+
+// ─── Anchored VWAP (anchor moves when a new lowest-low is made) ──────────────
+var float anchor_low   = na
+var bool  anchor_reset = false
+anchor_reset := false
+if na(anchor_low) or low < anchor_low
+    anchor_low   := low
+    anchor_reset := true
+
+avwap = ta.vwap(hlc3, anchor_reset)
+
+// ─── Entry conditions ────────────────────────────────────────────────────────
+uptrend     = close > sma50 and close > sma200 and sma50 > sma200
+above_avwap = close > avwap
+dist_pct    = avwap > 0 ? (close - avwap) / avwap * 100 : 100
+
+// Pullback: low (or close) came within i_pullback_pct of aVWAP within last N bars
+pullback_touched = ta.lowest((low - avwap) / avwap * 100, i_pullback_lb) <= i_pullback_pct
+
+bounce_candle = close > open and close > close[1] and close > high[1]
+
+// Stop placement (below anchor low)
+stop_at_entry = anchor_low * (1 - i_buffer_pct / 100)
+stop_pct      = (close - stop_at_entry) / close * 100
+stop_ok       = stop_pct <= i_max_stop and stop_at_entry > 0
+
+long_signal   = uptrend and above_avwap and pullback_touched and bounce_candle and stop_ok
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+var float cur_stop  = na
+var label last_label = na
+
+in_pos = strategy.position_size > 0
+
+if not in_pos
+    cur_stop := na
+
+// Van Tharp sizing
+risk_per_share = close - stop_at_entry
+risk_dollars   = strategy.equity * i_risk_pct / 100
+qty_by_risk    = risk_per_share > 0 ? math.floor(risk_dollars / risk_per_share) : 0
+qty_by_cap     = close > 0 ? math.floor(strategy.equity * i_max_pos_pct / 100 / close) : 0
+trade_qty      = math.min(qty_by_risk, qty_by_cap)
+
+if long_signal and not in_pos and trade_qty > 0
+    strategy.entry("Long", strategy.long, qty=trade_qty)
+    cur_stop := stop_at_entry
+
+// Trail: raise stop to the trailing MA (only moves up)
+if in_pos
+    if sma_t > cur_stop
+        cur_stop := sma_t
+    strategy.exit("Stop", from_entry="Long", stop=cur_stop)
+    // Discretionary exits — close below aVWAP = regime change
+    if close < avwap
+        strategy.close("Long", comment="aVWAP break")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════════════════════════════════════════
+plot(avwap, "Anchored VWAP", color=color.purple, linewidth=2)
+plot(sma50,  "50 SMA",       color=color.orange, linewidth=1)
+plot(sma200, "200 SMA",      color=color.red,    linewidth=2)
+
+plot(in_pos ? cur_stop : na, "Stop",
+     color=color.red, style=plot.style_linebr, linewidth=2)
+
+bgcolor(uptrend and above_avwap ? color.new(color.green, 95) : na, title="Setup OK")
+
+plotshape(long_signal and not in_pos,
+     title    = "Buy",
+     style    = shape.triangleup,
+     location = location.belowbar,
+     color    = color.lime,
+     size     = size.normal)
+
+f_str(v) =>
+    na(v) ? "n/a" : str.tostring(math.round(v, 2))
+
+if long_signal and not in_pos
+    label.delete(last_label)
+    last_label := label.new(bar_index, low,
+         text  = "aVWAP BUY"                                                  +
+                 "\nEntry ~ " + f_str(close)                                  +
+                 "\nStop:  "  + f_str(stop_at_entry) + " (" + f_str(stop_pct) + "%)" +
+                 "\naVWAP: "  + f_str(avwap)                                  +
+                 "\nShares: " + str.tostring(trade_qty)                       +
+                 "  Risk: $"  + str.tostring(math.round(trade_qty * risk_per_share, 0)) +
+                 " (" + str.tostring(i_risk_pct) + "%)",
+         style = label.style_label_up,
+         color = color.new(color.purple, 20),
+         textcolor = color.white,
+         size  = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERFORMANCE ANALYTICS TABLE
+// ═══════════════════════════════════════════════════════════════════════════════
+i_show_perf = input.bool(true, "Show performance table", group="Analytics")
+
+var array<float> trade_risks = array.new<float>()
+if strategy.position_size > 0 and strategy.position_size[1] <= 0 and not na(cur_stop)
+    risk_per_share_actual = strategy.position_avg_price - cur_stop
+    dollar_risk           = risk_per_share_actual * math.abs(strategy.position_size)
+    if dollar_risk > 0
+        array.push(trade_risks, dollar_risk)
+
+var table perf_tbl = table.new(position.top_left, 2, 11, border_width=1)
+
+f_perf_row(row, k, v, good) =>
+    table.cell(perf_tbl, 0, row, k, text_color=color.white,
+         bgcolor=color.new(color.gray, 70), text_size=size.small)
+    table.cell(perf_tbl, 1, row, v, text_color=color.white,
+         bgcolor = good ? color.new(color.green, 30) : color.new(color.gray, 50),
+         text_size=size.small)
+
+if i_show_perf and barstate.islast
+    table.clear(perf_tbl, 0, 0, 1, 10)
+    n        = strategy.closedtrades
+    wins     = 0
+    losses   = 0
+    gross_w  = 0.0
+    gross_l  = 0.0
+    sum_r    = 0.0
+    r_count  = 0
+    if n > 0
+        for i = 0 to n - 1
+            p = strategy.closedtrades.profit(i)
+            if p > 0
+                wins    += 1
+                gross_w += p
+            else if p < 0
+                losses  += 1
+                gross_l += math.abs(p)
+            if i < array.size(trade_risks)
+                r_dollar = array.get(trade_risks, i)
+                if r_dollar > 0
+                    sum_r   += p / r_dollar
+                    r_count += 1
+    win_rate = n > 0 ? wins / n * 100 : 0.0
+    pf       = gross_l > 0 ? gross_w / gross_l : na
+    avg_w    = wins   > 0 ? gross_w / wins     : 0.0
+    avg_l    = losses > 0 ? gross_l / losses   : 0.0
+    exp_pt   = n > 0 ? (gross_w - gross_l) / n : 0.0
+    avg_r    = r_count > 0 ? sum_r / r_count : 0.0
+    max_dd_p = strategy.initial_capital > 0 ?
+               strategy.max_drawdown / strategy.initial_capital * 100 : 0.0
+    net_p    = strategy.netprofit
+
+    f_perf_row(0,  "Trades",        str.tostring(n),                            n >= 20)
+    f_perf_row(1,  "Win rate",      str.tostring(math.round(win_rate, 1)) + "%", win_rate >= 50)
+    f_perf_row(2,  "Profit factor", na(pf) ? "n/a" : str.tostring(math.round(pf, 2)),
+                                     not na(pf) and pf >= 1.5)
+    f_perf_row(3,  "Expectancy ($)",str.tostring(math.round(exp_pt, 2)),         exp_pt > 0)
+    f_perf_row(4,  "Avg R",         str.tostring(math.round(avg_r, 2)),          avg_r > 0)
+    f_perf_row(5,  "Avg win ($)",   str.tostring(math.round(avg_w, 2)),          true)
+    f_perf_row(6,  "Avg loss ($)",  str.tostring(math.round(avg_l, 2)),          false)
+    f_perf_row(7,  "Net profit ($)",str.tostring(math.round(net_p, 2)),          net_p > 0)
+    f_perf_row(8,  "Max DD %",      str.tostring(math.round(max_dd_p, 1)) + "%", max_dd_p < 20)
+    f_perf_row(9,  "Open trades",   str.tostring(strategy.opentrades),           strategy.opentrades > 0)
+    f_perf_row(10, "Anchor low",    f_str(anchor_low),                           true)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTES
+// • DAILY chart, stocks only.  Designed as a swing setup, not intraday.
+// • The mechanical anchor (lowest-low-so-far) is a proxy for Brian Shannon's
+//   discretionary "anchor at the meaningful pivot" approach.  For live trading,
+//   inspect the chart visually and confirm the anchor is at a structurally
+//   significant pivot (cycle low, post-earnings gap, breakout day).
+// • Position sizing scales with stop distance: deeper anchor lows give smaller
+//   positions, tighter anchors give larger positions.
+// • Multiple aVWAP exits: stop hit, aVWAP break (immediate), 20-DMA trail.
+//   The aVWAP break is the most important — it's the "thesis invalidated" signal.
+// ═══════════════════════════════════════════════════════════════════════════════

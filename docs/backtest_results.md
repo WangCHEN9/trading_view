@@ -25,6 +25,7 @@ Each row below is reproducible by re-running the command shown. CSVs written to 
 | weinstein_stage4_short | sp500 | 1wk | 2022 only | **0** | — | — | 🔴 entry filter blocks even bear-period signals |
 | **overvalued_growth_short** | expensive_software | 1d | 10y | 59 | 35.6% | +0.01 | ✅ insurance profile holds with frictions |
 | overvalued_growth_short | expensive_software | 1d | 2022 only | 18 | 44.4% | 0.00 | ✅ bear-period profitable in dollars (+$337) |
+| **avwap_pullback** | sp500 | 1d | 10y | 486 | 43.4% | **+0.04** | 🟡 marginal; aVWAP-break exit too sensitive, needs tuning |
 
 ### Real-world expectancy estimates
 

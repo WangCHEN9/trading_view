@@ -47,7 +47,8 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Run all 4 strategies on `sp500` universe | ✅ | Massive reality check: consolidation_breakout 1.41 R → 0.30 R (survivorship bias was 4×). All numbers in docs/backtest_results.md. |
 | Slippage + commission in engine | ✅ | `--slippage-bps` and `--commission` CLI flags on runner.py. Applied post-trade. Long-hold strategies absorb frictions; short strategies more sensitive. |
 | Loosen Weinstein entry conditions | ❌ | 0 trades in 2022 on SP500 means the 10-condition filter is too restrictive. Likely culprit: NATR + wick filter conflict with bear-market high-vol candles. |
-| Implement VWAP-related strategy | ❌ | Next: VWAP-based intraday or daily mean-reversion / breakout strategy. |
+| Implement VWAP-related strategy | ✅ | `scripts/avwap_pullback.pine` + Python port. Brian Shannon anchored-VWAP framework with mechanical lowest-low anchor. SP500/10y/frictions result: 486 trades, 43.4% WR, +0.04 R — marginal. aVWAP-break exit too sensitive; needs 2-bar confirmation tuning. |
+| Improve aVWAP exit (add multi-bar confirmation) | ❌ | Highest-priority follow-up; current single-close break exits too early. |
 | Anti-overfitting practices (OOS / WFA / sensitivity / MC / random benchmark) | ❌ | See `docs/backtest_methodology.md` for the full list. Highest priority: time-based train/test split in `runner.py`, then slippage/commission, then walk-forward harness. |
 | Walk-forward / OOS split | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
 | Slippage + commission realism | ❌ | Add to backtest engine; TV strategy settings too |

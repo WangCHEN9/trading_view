@@ -28,6 +28,7 @@ STRATEGY_BENCHMARKS: dict[str, list[str]] = {
     "minervini_sepa":           ["SPY"],
     "weinstein_stage4_short":   ["SPY"],
     "overvalued_growth_short":  ["SPY", "IGV", "VIX"],
+    "avwap_pullback":           [],
 }
 
 BENCHMARK_TICKERS = {
