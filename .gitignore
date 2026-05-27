@@ -8,6 +8,7 @@ uv.lock
 
 # Backtest artifacts
 backtest/cache/
+backtest/cache_fund/
 backtest/results/
 
 # Editors

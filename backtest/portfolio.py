@@ -27,7 +27,8 @@ import pandas as pd
 from tabulate import tabulate
 
 from . import data, universe, metrics
-from .runner import STRATEGY_BENCHMARKS, _fetch_benchmarks
+from . import fundamentals as fund_lib
+from .runner import STRATEGY_BENCHMARKS, STRATEGY_USES_FUNDAMENTALS, _fetch_benchmarks
 
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -48,6 +49,7 @@ def main():
     ap.add_argument("--end",   default=None)
     ap.add_argument("--slippage-bps", type=float, default=0.0)
     ap.add_argument("--commission",   type=float, default=0.0)
+    ap.add_argument("--no-fund", action="store_true")
     args = ap.parse_args()
 
     symbols = universe.get(args.universe)
@@ -62,13 +64,24 @@ def main():
     bars         = data.load_many(symbols, interval=args.interval, period=args.period,
                                   force_refresh=args.refresh)
 
+    fundamentals_by_sym: dict[str, "pd.DataFrame"] = {}
+    fund_enabled = (args.strategy in STRATEGY_USES_FUNDAMENTALS) and not args.no_fund
+    if fund_enabled:
+        print(f"[portfolio] fetching fundamentals for {len(symbols)} symbols...")
+        fundamentals_by_sym = fund_lib.load_fundamentals(symbols)
+        print(f"[portfolio] fundamental coverage: {len(fundamentals_by_sym)} / {len(symbols)}")
+
     # ─── Step 1: collect all candidate trades per symbol ──────────────────────
     all_candidates: list[dict] = []
     for sym, df in bars.items():
+        sym_fund = fundamentals_by_sym.get(sym)
         try:
-            result = strat.backtest(df, params, benchmarks=benchmarks)
+            result = strat.backtest(df, params, benchmarks=benchmarks, fundamentals=sym_fund)
         except TypeError:
-            result = strat.backtest(df, params)
+            try:
+                result = strat.backtest(df, params, benchmarks=benchmarks)
+            except TypeError:
+                result = strat.backtest(df, params)
         for t in result["trades"]:
             t["symbol"] = sym
             all_candidates.append(t)

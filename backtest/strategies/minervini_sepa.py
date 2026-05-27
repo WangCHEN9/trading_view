@@ -35,11 +35,18 @@ class Params:
     trail_len:       int   = 21
     risk_pct:        float = 2.5
     max_pos_pct:     float = 25.0
+    # Fundamental filter (require yfinance quarterly data — see fundamentals.py)
+    use_fund:           bool  = True
+    fund_positive_ni:   bool  = True   # require NI > 0
+    fund_ni_yoy_growth: bool  = True   # require NI[q] > NI[q-4]
+    fund_rev_yoy_growth: bool = True   # require Rev[q] > Rev[q-4]
+    fund_min_opm:       float = 5.0    # min operating margin %
     initial_equity:  float = 100_000.0
 
 
 def backtest(df: pd.DataFrame, params: Params = Params(),
-             benchmarks: dict[str, pd.DataFrame] | None = None) -> dict:
+             benchmarks: dict[str, pd.DataFrame] | None = None,
+             fundamentals: pd.DataFrame | None = None) -> dict:
     if len(df) < 252 + 10:
         return {"trades": [], "equity_curve": pd.Series(dtype=float),
                 "final_equity": params.initial_equity}
@@ -92,7 +99,20 @@ def backtest(df: pd.DataFrame, params: Params = Params(),
     stop_pct   = (c - stop_init) / c * 100
     stop_ok    = stop_pct <= p.max_stop_pct
 
-    long_signal = trend_template & vcp_ok & pivot_break & vol_spike & stop_ok
+    # Fundamental filter (na-safe: passes through if no data)
+    if p.use_fund and fundamentals is not None and not fundamentals.empty:
+        from ..fundamentals import make_pass_mask
+        fund_ok = make_pass_mask(
+            fundamentals, df.index,
+            require_positive_ni    = p.fund_positive_ni,
+            require_ni_yoy_growth  = p.fund_ni_yoy_growth,
+            require_rev_yoy_growth = p.fund_rev_yoy_growth,
+            min_opm                = p.fund_min_opm,
+        )
+    else:
+        fund_ok = pd.Series(True, index=df.index)
+
+    long_signal = trend_template & vcp_ok & pivot_break & vol_spike & stop_ok & fund_ok
 
     # ─── Stateful loop ────────────────────────────────────────────────────────
     trades: list[dict] = []

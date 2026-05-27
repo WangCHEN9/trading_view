@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 from tabulate import tabulate
 
-from . import data, universe, metrics
+from . import data, universe, metrics, fundamentals as fund_lib
 
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -28,6 +28,13 @@ STRATEGY_BENCHMARKS: dict[str, list[str]] = {
     "minervini_sepa":           ["SPY"],
     "overvalued_growth_short":  ["SPY", "IGV", "VIX"],
     "avwap_pullback":           [],
+}
+
+# Long strategies that benefit from fundamental quality filter (yfinance data)
+STRATEGY_USES_FUNDAMENTALS = {
+    "consolidation_breakout",
+    "minervini_sepa",
+    "avwap_pullback",
 }
 
 BENCHMARK_TICKERS = {
@@ -74,6 +81,8 @@ def main():
                     help="Slippage applied per fill (entry + exit) in basis points. 5 = 0.05%.")
     ap.add_argument("--commission",   type=float, default=0.0,
                     help="Flat commission per fill in dollars. Round-trip = 2× this.")
+    ap.add_argument("--no-fund", action="store_true",
+                    help="Disable fundamental filter even for strategies that support it.")
     args = ap.parse_args()
 
     symbols = universe.get(args.universe) if args.universe else args.symbols
@@ -95,6 +104,14 @@ def main():
     bars = data.load_many(symbols, interval=args.interval, period=args.period,
                           force_refresh=args.refresh)
 
+    # Fetch fundamentals if strategy supports it and user didn't opt out
+    fundamentals_by_sym: dict[str, "pd.DataFrame"] = {}
+    fund_enabled = (args.strategy in STRATEGY_USES_FUNDAMENTALS) and not args.no_fund
+    if fund_enabled:
+        print(f"[runner] fetching yfinance quarterly fundamentals for {len(symbols)} symbols...")
+        fundamentals_by_sym = fund_lib.load_fundamentals(symbols)
+        print(f"[runner] fundamental data available for {len(fundamentals_by_sym)} / {len(symbols)} symbols")
+
     start_ts = pd.Timestamp(args.start) if args.start else None
     end_ts   = pd.Timestamp(args.end)   if args.end   else None
     if start_ts or end_ts:
@@ -106,11 +123,15 @@ def main():
               f"commission=${args.commission}/fill")
 
     for sym, df in bars.items():
-        # Pass benchmarks if the strategy signature accepts them
+        # Pass benchmarks + fundamentals if the strategy signature accepts them
+        sym_fund = fundamentals_by_sym.get(sym)
         try:
-            result = strat.backtest(df, params, benchmarks=benchmarks)
+            result = strat.backtest(df, params, benchmarks=benchmarks, fundamentals=sym_fund)
         except TypeError:
-            result = strat.backtest(df, params)
+            try:
+                result = strat.backtest(df, params, benchmarks=benchmarks)
+            except TypeError:
+                result = strat.backtest(df, params)
 
         # Filter trades to those that entered within the requested window
         trades = result["trades"]

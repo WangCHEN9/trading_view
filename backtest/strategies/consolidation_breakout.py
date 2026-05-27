@@ -33,6 +33,12 @@ class Params:
     max_stop_pct: float = 20.0   # %
     risk_pct:     float = 2.5    # % of equity risked per trade
     max_pos_pct:  float = 25.0   # ceiling on notional position size
+    # Fundamental filter
+    use_fund:            bool  = True
+    fund_positive_ni:    bool  = False   # original Pine doesn't require — keeps technical-driven
+    fund_ni_yoy_growth:  bool  = True
+    fund_rev_yoy_growth: bool  = True
+    fund_min_opm:        float = 10.0
     initial_equity: float = 100_000.0
 
 
@@ -62,7 +68,9 @@ def _atr(df: pd.DataFrame, n: int = 14) -> pd.Series:
 
 
 # ───────────────────────── Backtest engine ──────────────────────────────────────
-def backtest(df: pd.DataFrame, params: Params = Params()) -> dict:
+def backtest(df: pd.DataFrame, params: Params = Params(),
+             benchmarks: dict | None = None,
+             fundamentals: pd.DataFrame | None = None) -> dict:
     """Run the strategy over a weekly OHLCV DataFrame.
 
     Returns: {"trades": [...], "equity_curve": pd.Series, "final_equity": float}
@@ -97,8 +105,20 @@ def backtest(df: pd.DataFrame, params: Params = Params()) -> dict:
     natr_ok     = natr < p.natr_max
     stop_ok     = (c_rng > 0) & ((c - stop_at_entry) / c * 100 <= p.max_stop_pct)
 
+    if p.use_fund and fundamentals is not None and not fundamentals.empty:
+        from ..fundamentals import make_pass_mask
+        fund_ok = make_pass_mask(
+            fundamentals, df.index,
+            require_positive_ni    = p.fund_positive_ni,
+            require_ni_yoy_growth  = p.fund_ni_yoy_growth,
+            require_rev_yoy_growth = p.fund_rev_yoy_growth,
+            min_opm                = p.fund_min_opm,
+        )
+    else:
+        fund_ok = pd.Series(True, index=df.index)
+
     long_signal = (above_ma & macd_bull & breakout & valid_size & valid_wick &
-                   vol_ok & new_10wk_hi & natr_ok & stop_ok)
+                   vol_ok & new_10wk_hi & natr_ok & stop_ok & fund_ok)
 
     macd_cross_dn = (macd_line < sig_line) & (macd_line.shift(1) >= sig_line.shift(1))
 

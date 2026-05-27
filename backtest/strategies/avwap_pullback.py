@@ -34,6 +34,11 @@ class Params:
     avwap_exit_bars: int   = 2     # require N consecutive closes below aVWAP before exit
     risk_pct:        float = 2.5
     max_pos_pct:     float = 25.0
+    # Fundamental filter
+    use_fund:            bool  = True
+    fund_positive_ni:    bool  = True
+    fund_rev_yoy_growth: bool  = True
+    fund_min_opm:        float = 0.0    # off by default; set 5+ to filter unprofitable growth
     initial_equity:  float = 100_000.0
 
 
@@ -66,7 +71,8 @@ def _anchored_vwap(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
 
 
 def backtest(df: pd.DataFrame, params: Params = Params(),
-             benchmarks: dict | None = None) -> dict:
+             benchmarks: dict | None = None,
+             fundamentals: pd.DataFrame | None = None) -> dict:
     if len(df) < 200:
         return {"trades": [], "equity_curve": pd.Series(dtype=float),
                 "final_equity": params.initial_equity}
@@ -92,7 +98,19 @@ def backtest(df: pd.DataFrame, params: Params = Params(),
     stop_pct      = (c - stop_at_entry) / c * 100
     stop_ok       = (stop_pct <= p.max_stop_pct) & (stop_at_entry > 0)
 
-    long_signal = uptrend & above_avwap & pullback_touched & bounce_candle & stop_ok
+    if p.use_fund and fundamentals is not None and not fundamentals.empty:
+        from ..fundamentals import make_pass_mask
+        fund_ok = make_pass_mask(
+            fundamentals, df.index,
+            require_positive_ni    = p.fund_positive_ni,
+            require_ni_yoy_growth  = False,
+            require_rev_yoy_growth = p.fund_rev_yoy_growth,
+            min_opm                = p.fund_min_opm,
+        )
+    else:
+        fund_ok = pd.Series(True, index=df.index)
+
+    long_signal = uptrend & above_avwap & pullback_touched & bounce_candle & stop_ok & fund_ok
 
     # ─── Stateful loop ────────────────────────────────────────────────────────
     trades: list[dict] = []

@@ -68,15 +68,35 @@ uv run python -m backtest.portfolio --strategy consolidation_breakout --universe
      --period 10y --interval 1wk --max-positions 6 --slippage-bps 5 --commission 1
 ```
 
-### Concurrency sensitivity on consolidation_breakout
+### Fundamentals enabled (yfinance quarterly data) — measurement attempt
 
-| Max concurrent | Trades | Avg R | CAGR | Rejected (no capital) |
-|---|---|---|---|---|
-| 4 | 145 | 0.39 | 9.2% | 2,769 (95%) |
-| **6** | **215** | **0.39** | **13.1%** | **2,699 (93%)** |
-| 10 | 359 | 0.25 | 11.8% | 2,555 (88%) |
+The strategies now optionally apply Pine-equivalent fundamental filters at Python-backtest time too, using yfinance's quarterly income statement (positive Net Income, NI/Rev YoY growth, min operating margin).
 
-Higher concurrency dilutes avg R (you start taking lower-quality signals). Sweet spot ≈ 6. **93% of candidate signals get rejected** because capital is full — this is the gap between "edge per trade" and "what a real account can capture."
+| Strategy | Per-symbol WITHOUT fund | Per-symbol WITH fund | Δ |
+|---|---|---|---|
+| consolidation_breakout (sp500/10y/1wk) | 2914 trades, 0.30 R, 42.1% WR | 2815, 0.30, 42.0% | −99 trades, ≈0 R |
+| minervini_sepa (sp500/10y/1d) | 871 trades, 0.33 R, 33.6% WR | 846, 0.34, 33.8% | −25 trades, **+0.01 R / +0.2 pp WR** |
+| avwap_pullback (sp500/10y/1d) | 483 trades, 0.05 R, 44.9% WR | 483, 0.05, 44.9% | no change |
+
+| Strategy | Portfolio CAGR WITHOUT fund | WITH fund | Δ |
+|---|---|---|---|
+| consolidation_breakout | 13.5% | 10.7% | −2.8 pp |
+| minervini_sepa | 6.2% | ~5.8% | −0.4 pp |
+
+**Honest interpretation:**
+
+1. **yfinance only provides ~4 years of quarterly fundamentals.** 6 of the 10 backtest years have no data — na-safe default lets those signals through. We're really measuring impact on ~40% of trades.
+2. **Per-trade quality marginally improved** on Minervini (+0.01 R, +0.2 pp WR) — directionally positive, but tiny.
+3. **Portfolio CAGR drops are NOT a strategy critique.** With 93% signal rejection at cap=6, dropping ~3% of candidates re-orders which trades fill. The CAGR delta is **path dependence**, not the filter's quality effect.
+4. **The Pine version with full 10y FactSet data** (via `request.financial`) is where to validate the real effect. Python harness can only give a 4-year directional read.
+
+**Conclusion**: don't decide on the fundamental filter based on the Python harness. Validate Minervini's fundamental gate by running `minervini_sepa.pine` in TradingView's Strategy Tester on a single name, toggling `i_use_fund` ON vs OFF over 5-10 years, comparing the embedded performance table.
+
+Reproduce with `--no-fund` flag to disable fundamentals:
+```bash
+uv run python -m backtest.runner --strategy minervini_sepa --universe sp500 --period 10y --interval 1d \
+     --slippage-bps 5 --commission 1 --no-fund     # disable fund
+```
 
 ---
 
