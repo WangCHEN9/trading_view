@@ -146,11 +146,11 @@ def backtest(df: pd.DataFrame, params: Params = Params(),
                 equity += pnl
                 in_pos = False
             else:
-                # Chandelier trail: highest_high(trail_len) − ATR × mult, only moves up
-                hh = float(h.iloc[max(0, i - p.trail_len + 1): i + 1].max())
-                cand = hh - float(atr_w.iloc[i]) * p.atr_mult
-                if not np.isnan(cand) and cand > cur_stop:
-                    cur_stop = cand
+                # 50-DMA trail (Minervini's real exit rule): raise stop to 50-DMA
+                # whenever the 50-DMA is above current stop.  Only ratchets up.
+                sm = float(sma50.iloc[i])
+                if not np.isnan(sm) and sm > cur_stop:
+                    cur_stop = sm
 
         if (not in_pos and not pending_entry and bool(long_signal.iloc[i])
                 and not np.isnan(stop_init.iloc[i])):

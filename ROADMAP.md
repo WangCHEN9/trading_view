@@ -39,9 +39,12 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Python multi-symbol harness (per-symbol) | ✅ | `backtest/` — yfinance data, vectorized signals, stateful execution, R-multiples. Run via `uv run python -m backtest.runner`. Baseline result on large25 / 10y: 57.7% WR, 1.40 avg R, 20/25 symbols profitable. |
 | Portfolio mode (shared equity + concurrent cap) | ❌ | Current harness runs N parallel single-symbol sims. Real portfolio needs one equity pool + max concurrent positions. |
 | Other strategies ported to Python | ✅ | All 4 strategies ported. Results: `consolidation_breakout` 1.41 avg R ✅; `minervini_sepa` 14% WR / -0.31 R ⚠️; `weinstein_stage4_short` 27.5% WR / -0.45 R ⚠️ (bull regime); `overvalued_growth_short` 35.6% WR / +0.02 R ✅ insurance. See `docs/backtest_results.md`. |
-| Fix minervini_sepa trail (chandelier → 50-DMA close) | ❌ | Single highest-value next change; current chandelier kills winners early. |
-| Date-range slicing in runner.py (`--start`/`--end`) | ❌ | Needed to isolate 2022 for shorts; lets us validate bear thesis. |
-| Add macro filter to weinstein_stage4_short | ❌ | Mirror overvalued_growth_short's SPY > 200-DMA gate; should haircut −$35K bull-regime bleed. |
+| Fix minervini_sepa trail (chandelier → 50-DMA close) | ✅ | Improved avg R from −0.31 → +0.27. Trail no longer kills winners. VCP filter remains the bottleneck (next iteration). |
+| Date-range slicing in runner.py (`--start`/`--end`) | ✅ | Filters trades by entry_date while preserving full-history warmup. Validated on 2022 isolation. |
+| Add macro filter to weinstein_stage4_short | ✅ | SPY > 200-DMA gate. Cut bull-regime bleed by 67% (−$35K → −$11K over 10y). |
+| Bear-period validation (2022) | ✅ | overvalued_growth_short profitable in 2022 (44% WR, +$337). Validates bear thesis. weinstein_stage4_short fires 0 trades on large25 in 2022 — universe too narrow; expand or loosen filters. |
+| Loosen VCP filter or rework VCP detection | ❌ | Minervini's signal rate is too low (7 trades / 15 names / 10y). Either tune ratio or replace with discrete-wave detection. |
+| Run all 4 strategies on `sp500` universe | ❌ | 5–10× current trade counts; needed for statistical confidence. |
 | Anti-overfitting practices (OOS / WFA / sensitivity / MC / random benchmark) | ❌ | See `docs/backtest_methodology.md` for the full list. Highest priority: time-based train/test split in `runner.py`, then slippage/commission, then walk-forward harness. |
 | Walk-forward / OOS split | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
 | Slippage + commission realism | ❌ | Add to backtest engine; TV strategy settings too |

@@ -26,7 +26,7 @@ RESULTS_DIR.mkdir(exist_ok=True)
 STRATEGY_BENCHMARKS: dict[str, list[str]] = {
     "consolidation_breakout":   [],
     "minervini_sepa":           ["SPY"],
-    "weinstein_stage4_short":   [],
+    "weinstein_stage4_short":   ["SPY"],
     "overvalued_growth_short":  ["SPY", "IGV", "VIX"],
 }
 
@@ -68,6 +68,8 @@ def main():
     ap.add_argument("--period",   default="10y", help="yfinance period (5y, 10y, max)")
     ap.add_argument("--refresh",  action="store_true", help="force-redownload data")
     ap.add_argument("--initial-equity", type=float, default=100_000.0)
+    ap.add_argument("--start", help="YYYY-MM-DD — slice bars to start on/after this date (after download)")
+    ap.add_argument("--end",   help="YYYY-MM-DD — slice bars to end on/before this date (after download)")
     args = ap.parse_args()
 
     symbols = universe.get(args.universe) if args.universe else args.symbols
@@ -89,16 +91,29 @@ def main():
     bars = data.load_many(symbols, interval=args.interval, period=args.period,
                           force_refresh=args.refresh)
 
+    start_ts = pd.Timestamp(args.start) if args.start else None
+    end_ts   = pd.Timestamp(args.end)   if args.end   else None
+    if start_ts or end_ts:
+        print(f"[runner] filtering trades to entries in [{start_ts}, {end_ts}] (full history kept for warmup)")
+
     for sym, df in bars.items():
         # Pass benchmarks if the strategy signature accepts them
         try:
             result = strat.backtest(df, params, benchmarks=benchmarks)
         except TypeError:
             result = strat.backtest(df, params)
-        for t in result["trades"]:
+
+        # Filter trades to those that entered within the requested window
+        trades = result["trades"]
+        if start_ts or end_ts:
+            trades = [t for t in trades
+                      if (start_ts is None or t["entry_date"] >= start_ts) and
+                         (end_ts   is None or t["entry_date"] <= end_ts)]
+
+        for t in trades:
             t["symbol"] = sym
-        all_trades.extend(result["trades"])
-        stats = metrics.compute(sym, result["trades"], params.initial_equity,
+        all_trades.extend(trades)
+        stats = metrics.compute(sym, trades, params.initial_equity,
                                 equity_curve=result["equity_curve"])
         all_stats.append(stats)
 

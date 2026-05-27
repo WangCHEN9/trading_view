@@ -10,16 +10,26 @@ Each row below is reproducible by re-running the command shown. CSVs written to 
 
 ---
 
-## Headline summary
+## Headline summary — latest measurements
 
-| Strategy | Universe | TF | Trades | WR | Avg R | Net $/symbol | Symbols profitable | Avg DD/symbol | Verdict |
-|---|---|---|---|---|---|---|---|---|---|
-| **consolidation_breakout** | large25 | 1wk | **142** | **58.5%** | **1.41** | +$19,223 | 20/25 | −7.1% | ✅ strong edge confirmed |
-| **minervini_sepa** | momentum15 | 1d | 7 | 14.3% | −0.31 | −$318 | 1/15 | −1.4% | ⚠️ too restrictive + trail too tight |
-| **weinstein_stage4_short** | large25 | 1wk | 40 | 27.5% | −0.45 | −$1,416 | 4/25 | −4.4% | ⚠️ expected — shorts bleed in bulls |
-| **overvalued_growth_short** | expensive_software | 1d | 59 | 35.6% | +0.02 | −$152 | 10/25 | −2.4% | ✅ insurance profile confirmed |
+| Strategy | Universe | TF | Period | Trades | WR | Avg R | Net | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| **consolidation_breakout** | large25 | 1wk | 10y | **142** | **58.5%** | **+1.41** | +$480K | ✅ strong edge |
+| **minervini_sepa** *(50-DMA trail)* | momentum15 | 1d | 10y | 7 | 28.6% | **+0.27** | −$193 | 🟡 trail fixed; VCP still bottleneck |
+| **weinstein_stage4_short** *(macro filter)* | large25 | 1wk | 10y | 13 | 30.8% | −0.37 | −$11K | 🟡 macro filter cut bleed 67% |
+| **overvalued_growth_short** | expensive_software | 1d | 10y | 59 | 35.6% | +0.02 | −$3.8K | ✅ insurance profile confirmed |
+| **overvalued_growth_short** | expensive_software | 1d | **2022 only** | **18** | **44.4%** | **0.00** | **+$337** | ✅ bear-period thesis validated |
+| weinstein_stage4_short | large25 | 1wk | 2022 only | 0 | n/a | n/a | $0 | ⚠️ universe too narrow for bears |
 
-**All measurements on 10-year horizon, no commission/slippage modeled.** Per-symbol stats are valid; aggregate $ figures are 25 parallel single-symbol simulations, not a single portfolio sharing equity.
+**All measurements no commission/slippage modeled.** Per-symbol stats are valid; aggregate $ figures are 25 parallel single-symbol simulations, not a single portfolio sharing equity.
+
+### What changed since last run
+
+| Change | Before | After | Impact |
+|---|---|---|---|
+| Minervini: chandelier trail → **50-DMA close trail** | −0.31 R | +0.27 R | Wins no longer cut prematurely; +0.58 R improvement |
+| Weinstein: added **SPY > 200-DMA macro filter** | 40 trades, −$35K | 13 trades, −$11K | 67% of bull-regime entries correctly suppressed |
+| Runner: added **`--start` / `--end`** flags | n/a | works | Can isolate bear-period (2022) for short-strategy validation |
 
 ---
 

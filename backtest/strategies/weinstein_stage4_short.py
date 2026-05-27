@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from ._common import sma, macd, atr as _atr
+from ._common import sma, macd, atr as _atr, aligned
 
 
 @dataclass
@@ -32,6 +32,8 @@ class Params:
     max_stop_pct:   float = 20.0
     risk_pct:       float = 2.5
     max_pos_pct:    float = 25.0
+    use_macro:      bool  = True
+    macro_ma:       int   = 200
     initial_equity: float = 100_000.0
 
 
@@ -67,8 +69,16 @@ def backtest(df: pd.DataFrame, params: Params = Params(),
     natr_ok      = natr < p.natr_max
     stop_ok      = (c_rng > 0) & ((stop_at_entry - c) / c * 100 <= p.max_stop_pct)
 
+    # Macro filter: skip new shorts when SPY is above its 200-DMA
+    if p.use_macro and benchmarks and "SPY" in benchmarks:
+        spy_close = aligned(benchmarks["SPY"]["close"], df.index)
+        spy_sma_n = aligned(benchmarks["SPY"]["close"].rolling(p.macro_ma, min_periods=p.macro_ma).mean(), df.index)
+        macro_ok  = ~(spy_close > spy_sma_n)
+    else:
+        macro_ok = pd.Series(True, index=df.index)
+
     short_signal = (below_ma & ma_falling & breakdown & valid_size & valid_wick &
-                    vol_ok & new_10wk_lo & natr_ok & macd_bear & stop_ok)
+                    vol_ok & new_10wk_lo & natr_ok & macd_bear & stop_ok & macro_ok)
 
     # ─── Stateful loop (short direction) ──────────────────────────────────────
     trades: list[dict] = []

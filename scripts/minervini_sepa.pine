@@ -114,11 +114,12 @@ if long_signal and not in_pos and trade_qty > 0
     strategy.entry("Long", strategy.long, qty=trade_qty)
     cur_stop := stop_initial
 
-// Chandelier-style trailing stop: highest-high(N) − ATR × multiplier, only moves up
+// 50-DMA trailing stop (Minervini's actual exit rule): ride above the 50-DMA;
+// raise the stop UP to the 50-DMA as it ratchets up.  Hard initial 2× ATR
+// stop is retained for catastrophic protection on the entry bar.
 if in_pos
-    trail_candidate = ta.highest(high, i_trail_len) - atr * i_atr_mult
-    if na(cur_stop) or trail_candidate > cur_stop
-        cur_stop := trail_candidate
+    if sma50 > cur_stop
+        cur_stop := sma50
     strategy.exit("Stop", from_entry="Long", stop=cur_stop)
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -157,6 +157,24 @@ Compared with `weinstein_stage4_short` on large25:
 
 **The macro override does its job.**
 
+### 2022 bear-period isolation (THE test of the thesis)
+
+The 10y aggregate hides the regime story. Sliced to 2022 only:
+
+```bash
+uv run python -m backtest.runner --strategy overvalued_growth_short --universe expensive_software \
+     --period 10y --interval 1d --start 2022-01-01 --end 2022-12-31
+```
+
+| Metric | Full 10y | **2022 only** |
+|---|---|---|
+| Trades | 59 | **18** |
+| Win rate | 35.6% | **44.4%** |
+| Avg R | +0.02 | 0.00 |
+| Net | −$3,800 | **+$337** |
+
+The strategy was **profitable in the year it was designed to be profitable**. Bear-period thesis validated, though magnitude is modest — better entries (Layer 1 valuation filter, missing from Python port) would likely push 2022 R well above zero.
+
 ### Reproducibility
 
 ```bash

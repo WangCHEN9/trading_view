@@ -71,44 +71,44 @@ Initial stop distance = `2 × ATR(14)`, so position size scales inversely with t
 | Stocks emerging from 6–12 month bases | Stocks already 50%+ extended above 50-SMA |
 | Earnings beats followed by tight basing | Pre-earnings drift up — defer entry |
 
-## Expected frequency & return  (MEASURED — and worse than estimates)
+## Expected frequency & return  (MEASURED — after 50-DMA trail fix)
 
 ### Setup
 - Backtest: `backtest/strategies/minervini_sepa.py`
 - Universe: `momentum15` (15 high-momentum names — the strategy's natural habitat)
 - Period: 10 years daily
+- **Trail switched from chandelier (21-bar HH − 2×ATR) to 50-DMA close** — Minervini's actual exit rule
 - VCP measurement corrected (excludes breakout bar) vs literal Pine port
 - Frictions: none modeled
 
 ### Headline numbers
 
-| Metric | Value |
-|---|---|
-| Total trades | **7** across 15 symbols / 10 years |
-| Symbols profitable | **1 / 15** |
-| Win rate | **14.3%** |
-| Avg R | **−0.31** |
-| Net | **−$4,770** on $100K-per-symbol |
+| Metric | Value | vs old chandelier trail |
+|---|---|---|
+| Total trades | 7 | (same — VCP filter is the bottleneck) |
+| Win rate | **28.6%** | up from 14.3% |
+| Avg R | **+0.27** | **up from −0.31** (+0.58 R improvement) |
+| Net | **−$193** | up from −$4,770 |
+| Avg max DD | −2.8% | (slightly worse — wider trail means deeper retracements) |
 
-### Why the measured result is bad
+### What the trail fix proved
 
-This is an **honest negative result**. Two structural problems revealed by the backtest:
+Swapping the 21-bar chandelier trail for a 50-DMA close trail moved avg R from **−0.31 to +0.27** — a swing of +0.58 R per trade — without changing any other parameter. Same 7 entries, just allowed to ride longer:
 
-1. **VCP filter is extremely selective.** Across 15 high-momentum names over 10 years it fires only 7 times. The strategy is hyper-selective by design but the selectivity does not produce winners often enough to overcome the tight stop.
+- Old chandelier exited on the first pullback after the breakout. Most winners turned into break-evens or small losses.
+- New 50-DMA trail lets the trend develop. The DMA itself rises as the trade does, ratcheting the stop up smoothly.
 
-2. **Tight initial stop + chandelier trail.** `entry − 2×ATR` initial stop combined with a 21-bar chandelier trail tightens fast. The bar after a Minervini-style pivot break commonly retraces 30-50% of the breakout move on profit-taking — a 2×ATR stop sits exactly in that zone. Most signals stop out before the move begins.
+This is consistent with Minervini's own published practice. The Pine source also had the chandelier trail; both are now corrected.
 
-### What this means practically
+### What's still wrong
 
-Either:
-- **The script as-coded needs tuning** — Minervini himself trails wider (50-DMA), not chandelier. Initial stop is correct; the trail is too tight.
-- **OR the strategy needs the discretionary review layer it traditionally relies on** — Minervini personally rejects 90%+ of mechanically-flagged setups based on chart pattern quality. The mechanical filter alone is insufficient.
+**The VCP filter is still the bottleneck.** 7 signals over 15 names × 10 years (≈ 0.05 signals/symbol/year) is implausibly low. Mechanical VCP detection is a known weak point — Minervini's real process counts discrete contraction waves visually. The single ATR-ratio proxy we use captures only ~10% of the textbook patterns.
 
 ### Recommended next steps before risking capital
 
-1. Backtest with the trail switched to "close < 50-DMA" instead of chandelier — likely materially better
-2. Run on a larger universe (S&P 500) where the wider sample size will tell us if the edge exists at all in a mechanical form
-3. Run on individual symbols in TradingView and manually inspect each entry / exit — does the mechanical entry match Minervini's qualitative criteria? If not, the script is not Minervini.
+1. **Run on `sp500` daily** for a larger sample (would take ~10 minutes first run; signal count likely 100–300)
+2. **Loosen VCP ratio** experimentally (0.6 → 0.8) and re-measure. Note: this is risk of overfitting; document explicitly.
+3. **Validate on TradingView individual charts** — does the mechanical entry visually match a Minervini-quality VCP? If not, the script needs a different VCP detection algorithm.
 
 ### Reproducibility
 

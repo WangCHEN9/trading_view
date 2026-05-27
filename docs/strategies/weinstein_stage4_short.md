@@ -72,23 +72,42 @@ Same 25% notional ceiling.
 | Wide bid-ask, plenty of borrow | Hard-to-borrow + high stock-loan fees |
 | Stable indexes (low VIX) | Macro vol regime — short squeezes blanket the market |
 
-## Expected frequency & return  (MEASURED — and confirms "shorts hate bull markets")
+## Expected frequency & return  (MEASURED — with new macro filter)
 
 ### Setup
 - Backtest: `backtest/strategies/weinstein_stage4_short.py`
 - Universe: `large25`, weekly, 10 years
-- 2015-2025 was a **near-pure bull market** for US large caps — the worst possible backdrop for a short strategy
+- **NEW: SPY > 200-DMA macro filter** suppresses entries during obvious bull regimes (mirroring `overvalued_growth_short`)
+- 2015-2025 was a **near-pure bull market** for US large caps — strategy correctly stays quiet most of the period
 
-### Headline numbers
+### Headline numbers (10y, with macro filter)
 
-| Metric | Value |
-|---|---|
-| Total trades | **40** across 25 symbols |
-| Symbols profitable | **4 / 25** |
-| Win rate | **27.5%** |
-| Avg R | **−0.45** |
-| Net | **−$35,389** on $100K-per-symbol |
-| Avg max DD per symbol | **−4.4%** |
+| Metric | Value | vs no macro filter |
+|---|---|---|
+| Total trades | **13** | down from 40 (−67%) |
+| Win rate | **30.8%** | up from 27.5% |
+| Avg R | −0.37 | slightly better than −0.45 |
+| Net | **−$11,176** | up from −$35,389 (cut bleed by **68%**) |
+| Avg max DD per symbol | −3.8% | better than −4.4% |
+
+### Why this matters
+
+The macro filter does exactly what it should: **silence the strategy in bull regimes**. Same logic, same parameters, same universe — only the macro gate changed, and bull-market bleeding fell by two-thirds. This is the cleanest experimental evidence in the repo for "macro context matters more than entry timing for shorts."
+
+### 2022 isolation (bear-period validation)
+
+Sliced to entries fired only in 2022:
+
+```bash
+uv run python -m backtest.runner --strategy weinstein_stage4_short --universe large25 \
+     --period 10y --interval 1wk --start 2022-01-01 --end 2022-12-31
+```
+
+Result: **zero trades**. The `large25` megacap universe doesn't produce enough breakdowns satisfying all 10 entry conditions even in 2022 — UNH, JNJ, XOM, COST stayed strong; AAPL/MSFT bounced too quickly off support. To honestly validate the bear-regime thesis we need:
+- Broader universe (S&P 500 or the `expensive_software` list)
+- Or loosen one or two of the 10 conditions for higher-frequency entries
+
+Compare to `overvalued_growth_short` on `expensive_software` in 2022: **18 trades, 44.4% WR, slight positive net** — the short-side thesis works on weaker names, just not on blue-chip megacaps.
 
 ### How to read this correctly
 

@@ -37,6 +37,10 @@ i_risk_pct     = input.float(2.5,  "Risk % of account per trade",     minval=0.1
 i_max_pos_pct  = input.float(25.0, "Max position % of equity",        minval=1.0, maxval=100.0, group="Risk Management",
      tooltip="Cap on short position notional as % of equity.")
 
+i_use_macro    = input.bool (true, "Enable macro filter",             group="Macro",
+     tooltip="Skip new shorts when SPY is above its 200-DMA — avoids fighting obvious bull regimes.")
+i_macro_ma     = input.int  (200,  "SPY MA length (calm regime)",     group="Macro")
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CORE INDICATORS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -79,8 +83,14 @@ macd_bear      = macd_line < signal_line
 stop_ok        = c_rng > 0 and
      (stop_at_entry - close) / close * 100 <= i_max_stop
 
+// ─── Macro filter: skip new shorts when SPY is above its 200-DMA ─────────────
+spy_close = request.security("AMEX:SPY", timeframe.period, close, ignore_invalid_symbol=true)
+spy_sma   = request.security("AMEX:SPY", timeframe.period, ta.sma(close, i_macro_ma), ignore_invalid_symbol=true)
+macro_bull = not na(spy_close) and not na(spy_sma) and spy_close > spy_sma
+macro_ok   = not i_use_macro or not macro_bull
+
 short_signal   = below_ma and ma_bearish and breakdown and valid_size and
-     valid_wick and vol_ok and new_10wk_lo and natr_ok and macd_bear and stop_ok
+     valid_wick and vol_ok and new_10wk_lo and natr_ok and macd_bear and stop_ok and macro_ok
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // POSITION MANAGEMENT
