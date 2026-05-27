@@ -1,0 +1,91 @@
+"""CLI runner.  Usage:
+
+    uv run python -m backtest.runner --strategy consolidation_breakout --universe large25
+    uv run python -m backtest.runner --strategy consolidation_breakout --symbols AAPL MSFT NVDA --period 5y
+
+Outputs a per-symbol metrics table to stdout and writes:
+    backtest/results/{strategy}_{universe}_summary.csv
+    backtest/results/{strategy}_{universe}_trades.csv
+"""
+from __future__ import annotations
+
+import argparse
+import importlib
+from pathlib import Path
+
+import pandas as pd
+from tabulate import tabulate
+
+from . import data, universe, metrics
+
+
+RESULTS_DIR = Path(__file__).parent / "results"
+RESULTS_DIR.mkdir(exist_ok=True)
+
+
+def _load_strategy(name: str):
+    mod = importlib.import_module(f"backtest.strategies.{name}")
+    if not hasattr(mod, "backtest"):
+        raise SystemExit(f"Strategy module '{name}' missing backtest() entry point")
+    return mod
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--strategy", required=True,
+                    help="strategy module name under backtest.strategies (e.g. consolidation_breakout)")
+    grp = ap.add_mutually_exclusive_group(required=True)
+    grp.add_argument("--universe", help="named universe from backtest.universe")
+    grp.add_argument("--symbols", nargs="+", help="explicit symbol list")
+    ap.add_argument("--interval", default="1wk", help="yfinance interval (1d, 1wk)")
+    ap.add_argument("--period",   default="10y", help="yfinance period (5y, 10y, max)")
+    ap.add_argument("--refresh",  action="store_true", help="force-redownload data")
+    ap.add_argument("--initial-equity", type=float, default=100_000.0)
+    args = ap.parse_args()
+
+    symbols = universe.get(args.universe) if args.universe else args.symbols
+    label   = args.universe or "_".join(symbols)
+
+    print(f"\n=== Backtest: {args.strategy}  on  {len(symbols)} symbols  ({args.interval}, {args.period}) ===\n")
+
+    strat = _load_strategy(args.strategy)
+    params = strat.Params(initial_equity=args.initial_equity)
+
+    all_stats:  list[metrics.PerfStats] = []
+    all_trades: list[dict]              = []
+
+    bars = data.load_many(symbols, interval=args.interval, period=args.period,
+                          force_refresh=args.refresh)
+
+    for sym, df in bars.items():
+        result = strat.backtest(df, params)
+        for t in result["trades"]:
+            t["symbol"] = sym
+        all_trades.extend(result["trades"])
+        stats = metrics.compute(sym, result["trades"], params.initial_equity,
+                                equity_curve=result["equity_curve"])
+        all_stats.append(stats)
+
+    # Per-symbol table
+    rows = [s.as_dict() for s in all_stats]
+    df_stats = pd.DataFrame(rows).sort_values("net_profit", ascending=False)
+    print(tabulate(df_stats, headers="keys", tablefmt="github",
+                   showindex=False, floatfmt=".2f"))
+
+    # Portfolio aggregate
+    agg = metrics.aggregate(all_stats)
+    print("\n--- Portfolio aggregate ---")
+    print(tabulate([[k, v] for k, v in agg.items()], tablefmt="github"))
+
+    # Write CSVs
+    summary_path = RESULTS_DIR / f"{args.strategy}_{label}_summary.csv"
+    trades_path  = RESULTS_DIR / f"{args.strategy}_{label}_trades.csv"
+    df_stats.to_csv(summary_path, index=False)
+    if all_trades:
+        pd.DataFrame(all_trades).to_csv(trades_path, index=False)
+    print(f"\nWrote: {summary_path}")
+    print(f"Wrote: {trades_path}")
+
+
+if __name__ == "__main__":
+    main()

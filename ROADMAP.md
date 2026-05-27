@@ -34,10 +34,12 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 
 | Item | Status | Notes |
 |---|---|---|
-| Single-symbol backtest in TradingView | 🟡 | Strategies run, but unverified by user across many symbols |
-| Walk-forward across full universe | ❌ | Manual: pick 20–30 symbols, run, log win-rate / expectancy / max DD |
-| Out-of-sample test | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
-| Slippage + commission realism | ❌ | TV strategy settings: set commission, slippage assumptions for the broker you'll use |
+| Single-symbol backtest in TradingView | ✅ | Performance analytics table embedded in each `.pine` strategy |
+| Python multi-symbol harness (per-symbol) | ✅ | `backtest/` — yfinance data, vectorized signals, stateful execution, R-multiples. Run via `uv run python -m backtest.runner`. Baseline result on large25 / 10y: 57.7% WR, 1.40 avg R, 20/25 symbols profitable. |
+| Portfolio mode (shared equity + concurrent cap) | ❌ | Current harness runs N parallel single-symbol sims. Real portfolio needs one equity pool + max concurrent positions. |
+| Other strategies ported to Python | ❌ | Only `consolidation_breakout` ported so far; `minervini_sepa` and `weinstein_stage4_short` pending. |
+| Walk-forward / OOS split | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
+| Slippage + commission realism | ❌ | Add to backtest engine; TV strategy settings too |
 | Robustness: regime test | ❌ | Run on bull (2017, 2020–21), bear (2022), sideways (2015) periods separately |
 
 ## Layer 4 — Risk & Position Sizing
@@ -76,10 +78,10 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 
 | Item | Status | Notes |
 |---|---|---|
-| `uv` venv in repo | ✅ | Established last session |
+| `uv` venv in repo | ✅ | `pyproject.toml` at repo root |
 | `pdfplumber` for strategy ingestion | ✅ | Used on `strategy/blueprint_2025.pdf` |
-| Universe downloader (yfinance / polygon) | ❌ | Local backtest harness independent of TradingView |
-| Backtest engine (vectorbt / backtesting.py) | ❌ | For walk-forward at scale — TV alone caps you at one symbol |
+| Universe downloader (yfinance) | ✅ | `backtest/data.py` — pickle-cached, 6h staleness |
+| Custom backtest engine | ✅ | `backtest/` — vectorized indicators + stateful execution loop. Per-symbol mode only for now. |
 | Alert ingestion + journal automation | ❌ | Pipe TradingView alert emails into a Postgres / Sheets log |
 
 ---
