@@ -1,10 +1,11 @@
 //@version=6
 strategy("Weinstein Stage 4 Breakdown  [SHORT / Weekly]",
      overlay               = true,
-     default_qty_type      = strategy.percent_of_equity,
-     default_qty_value     = 10,
+     default_qty_type      = strategy.fixed,
+     default_qty_value     = 1,
      calc_on_every_tick    = false,
-     pyramiding            = 0)
+     pyramiding            = 0,
+     initial_capital       = 100000)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Stan Weinstein — Stage 4 Breakdown Short
@@ -31,6 +32,10 @@ i_natr_max     = input.float(8.0,  "Max NATR (distribution threshold)",         
 i_wick_max     = input.float(50.0, "Max Lower Wick % of candle range",           group="Entry Filters")
 
 i_max_stop     = input.float(20.0, "Max Allowed Stop Loss %",         group="Risk Management")
+i_risk_pct     = input.float(2.5,  "Risk % of account per trade",     minval=0.1, maxval=10.0, group="Risk Management",
+     tooltip="Position size = (equity × risk%) / (stop − entry) for shorts.")
+i_max_pos_pct  = input.float(25.0, "Max position % of equity",        minval=1.0, maxval=100.0, group="Risk Management",
+     tooltip="Cap on short position notional as % of equity.")
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CORE INDICATORS
@@ -96,8 +101,15 @@ if not in_pos
     cur_stop     := na
     stop_lowered := false
 
-if short_signal and not in_pos
-    strategy.entry("Short", strategy.short)
+// Van Tharp fixed-fractional sizing (short: risk = stop − entry, stop above price)
+risk_per_share = stop_at_entry - close
+risk_dollars   = strategy.equity * i_risk_pct / 100
+qty_by_risk    = risk_per_share > 0 ? math.floor(risk_dollars / risk_per_share) : 0
+qty_by_cap     = close > 0 ? math.floor(strategy.equity * i_max_pos_pct / 100 / close) : 0
+trade_qty      = math.min(qty_by_risk, qty_by_cap)
+
+if short_signal and not in_pos and trade_qty > 0
+    strategy.entry("Short", strategy.short, qty=trade_qty)
     cur_stop     := stop_at_entry
     stop_lowered := false
 
@@ -147,6 +159,9 @@ if short_signal and not in_pos
          text  = "SHORT"                                                          +
                  "\nStop: " + str.tostring(math.round(stop_at_entry, 2))         +
                  "  SL%: "  + str.tostring(math.round((stop_at_entry - close) / close * 100, 1)) + "%" +
+                 "\nShares: " + str.tostring(trade_qty) +
+                 "  Risk: $" + str.tostring(math.round(trade_qty * risk_per_share, 0)) +
+                 " (" + str.tostring(i_risk_pct) + "%)"                          +
                  "\nNATR: " + str.tostring(math.round(natr, 1))                  +
                  "\nMA slope: " + (ma_falling ? "↓" : "→"),
          style = label.style_label_down,

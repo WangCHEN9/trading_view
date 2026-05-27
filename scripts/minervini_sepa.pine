@@ -1,10 +1,11 @@
 //@version=6
 strategy("Minervini SEPA Trend Template  [LONG / Daily]",
      overlay               = true,
-     default_qty_type      = strategy.percent_of_equity,
-     default_qty_value     = 10,
+     default_qty_type      = strategy.fixed,
+     default_qty_value     = 1,
      calc_on_every_tick    = false,
-     pyramiding            = 0)
+     pyramiding            = 0,
+     initial_capital       = 100000)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Mark Minervini's SEPA  (Specific Entry Point Analysis)
@@ -32,6 +33,10 @@ i_atr_len     = input.int  (14,   "ATR length",                       group="Ris
 i_atr_mult    = input.float(2.0,  "Initial stop ATR multiplier",      group="Risk")
 i_max_stop    = input.float(10.0, "Max allowed initial stop %",       group="Risk")
 i_trail_len   = input.int  (21,   "Trailing stop high-water bars",    group="Risk")
+i_risk_pct    = input.float(2.5,  "Risk % of account per trade",      minval=0.1, maxval=10.0, group="Risk",
+     tooltip="Position size = (equity × risk%) / (entry − stop).")
+i_max_pos_pct = input.float(25.0, "Max position % of equity",         minval=1.0, maxval=100.0, group="Risk",
+     tooltip="Cap on position size as % of equity.")
 
 // ─── Moving averages ──────────────────────────────────────────────────────────
 sma50  = ta.sma(close, 50)
@@ -98,8 +103,15 @@ in_pos = strategy.position_size > 0
 if not in_pos
     cur_stop := na
 
-if long_signal and not in_pos
-    strategy.entry("Long", strategy.long)
+// Van Tharp fixed-fractional sizing
+risk_per_share = close - stop_initial
+risk_dollars   = strategy.equity * i_risk_pct / 100
+qty_by_risk    = risk_per_share > 0 ? math.floor(risk_dollars / risk_per_share) : 0
+qty_by_cap     = close > 0 ? math.floor(strategy.equity * i_max_pos_pct / 100 / close) : 0
+trade_qty      = math.min(qty_by_risk, qty_by_cap)
+
+if long_signal and not in_pos and trade_qty > 0
+    strategy.entry("Long", strategy.long, qty=trade_qty)
     cur_stop := stop_initial
 
 // Chandelier-style trailing stop: highest-high(N) − ATR × multiplier, only moves up
@@ -131,6 +143,9 @@ if long_signal and not in_pos
          text  = "MINERVINI BUY"                                                    +
                  "\nStop: "       + str.tostring(math.round(stop_initial, 2))      +
                  "\nSL%: "        + str.tostring(math.round(stop_pct, 1))  + "%"   +
+                 "\nShares: "     + str.tostring(trade_qty) +
+                 "  Risk: $"      + str.tostring(math.round(trade_qty * risk_per_share, 0)) +
+                 " (" + str.tostring(i_risk_pct) + "%)"                            +
                  "\nVCP ratio: "  + str.tostring(math.round(atr_recent / atr_prior, 2)) +
                  "\nvs SPY 3M: "  + str.tostring(math.round((stk_ret - nz(spy_ret, 0)) * 100, 1)) + "%",
          style = label.style_label_up,

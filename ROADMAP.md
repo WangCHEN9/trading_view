@@ -44,7 +44,8 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 
 | Item | Status | Notes |
 |---|---|---|
-| Per-trade % of equity | ✅ | Built into each strategy (16% / 10%) |
+| Per-trade risk % (Van Tharp fixed-fractional) | ✅ | **2.5% of equity** per trade — `i_risk_pct` in each strategy. `qty = floor((equity × risk%) / (entry − stop))` |
+| Max position % of equity (ceiling) | ✅ | `i_max_pos_pct` default 25% — prevents tight stops from oversizing |
 | Max trade stop % cap | ✅ | `i_max_stop` in each strategy |
 | **Portfolio-level** cap (max concurrent positions) | ❌ | E.g. max 4 open at once = 16% × 4 = 64% deployed |
 | Sector exposure cap | ❌ | Don't allow 4 semis at once |

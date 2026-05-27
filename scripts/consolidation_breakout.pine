@@ -1,10 +1,11 @@
 //@version=6
 strategy("Weekly Consolidation Breakout  [FinancialWisdomTV]",
      overlay               = true,
-     default_qty_type      = strategy.percent_of_equity,
-     default_qty_value     = 16,
+     default_qty_type      = strategy.fixed,
+     default_qty_value     = 1,
      calc_on_every_tick    = false,
-     pyramiding            = 0)
+     pyramiding            = 0,
+     initial_capital       = 100000)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INPUTS
@@ -21,6 +22,10 @@ i_wick_max    = input.float(50.0, "Max Upper Wick % of candle range",      group
 
 // Risk
 i_max_stop    = input.float(20.0, "Max Allowed Stop Loss %",               group="Risk Management")
+i_risk_pct    = input.float(2.5,  "Risk % of account per trade",           minval=0.1, maxval=10.0, group="Risk Management",
+     tooltip="Position size = (equity × risk%) / (entry − stop).  Each trade risks this % of total account on stop-out.")
+i_max_pos_pct = input.float(25.0, "Max position % of equity (ceiling)",    minval=1.0, maxval=100.0, group="Risk Management",
+     tooltip="Cap on position size as % of equity — prevents tight stops from sizing into the entire account.")
 
 // Fundamentals
 i_use_fund    = input.bool  (true,   "Enable Fundamental Filters",         group="Fundamentals")
@@ -139,9 +144,17 @@ if not in_pos
     cur_stop    := na
     stop_raised := false
 
+// ── Position sizing (Van Tharp fixed-fractional risk) ─────────────────────────
+// shares = floor( (equity × risk%) / per-share-risk ), capped by max-pos%
+risk_per_share = close - stop_at_entry
+risk_dollars   = strategy.equity * i_risk_pct / 100
+qty_by_risk    = risk_per_share > 0 ? math.floor(risk_dollars / risk_per_share) : 0
+qty_by_cap     = close > 0 ? math.floor(strategy.equity * i_max_pos_pct / 100 / close) : 0
+trade_qty      = math.min(qty_by_risk, qty_by_cap)
+
 // ── Entry (filled at next bar's open) ─────────────────────────────────────────
-if long_signal and not in_pos
-    strategy.entry("Long", strategy.long)
+if long_signal and not in_pos and trade_qty > 0
+    strategy.entry("Long", strategy.long, qty=trade_qty)
     cur_stop    := stop_at_entry
     stop_raised := false
 
@@ -200,6 +213,9 @@ if long_signal and not in_pos
          text  = "ENTRY"                                                              +
                  "\nStop: " + str.tostring(math.round(stop_at_entry, 2))             +
                  "  SL%: "  + str.tostring(math.round((close - stop_at_entry) / close * 100, 1)) + "%" +
+                 "\nShares: " + str.tostring(trade_qty) +
+                 "  Risk: $" + str.tostring(math.round(trade_qty * risk_per_share, 0)) +
+                 " (" + str.tostring(i_risk_pct) + "%)"                              +
                  "\nNATR: " + str.tostring(math.round(natr, 1))                      +
                  "\n── Fundamentals ──"                                               +
                  "\nROE: "  + f_str(f_roe)  + "  ROC: " + f_str(f_roc)              +
