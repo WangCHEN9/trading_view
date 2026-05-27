@@ -86,17 +86,18 @@ See [backtest_methodology.md](backtest_methodology.md) for the full discussion o
 
 ## Strategy performance numbers — what's measured vs estimated
 
-**Latest portfolio-mode numbers** (single $100K account, max 6 concurrent positions, 5bps + $1/fill frictions, SP500 universe, 10y):
+**Honest scorecard** (single $100K account, max 6 concurrent positions, 5bps + $1/fill frictions, SP500 universe, 10y, vs SPY buy-and-hold):
 
-| Strategy | Status | **Single-account CAGR** | vs SPY (~13% same period) |
-|---|---|---|---|
-| Consolidation Breakout | ✅ tradeable | **13.1%** | matches |
-| Minervini SEPA (0.8 VCP) | 🟡 underperforms | 6.2% | −7 pp |
-| Anchored VWAP Pullback | 🟡 underperforms | 4.7% | −8 pp |
-| Weinstein Stage 4 Short | 🔴 **DO NOT TRADE** | n/a (loses money) | n/a |
-| Overvalued Growth Short | ✅ insurance only | n/a (≈flat) | designed to ≈0 in bulls |
+| Strategy | CAGR | vs SPY | Max DD | vs SPY | Recommendation |
+|---|---|---|---|---|---|
+| **SPY buy-and-hold (benchmark)** | **15.5%** | — | −32% | — | The yardstick |
+| consolidation_breakout | 13.5% | −2 pp | **−23%** | **+9 pp** | 🟡 marginal — DD edge only |
+| minervini_sepa | 6.2% | −9 pp | −37% | −4 pp | 🔴 do not trade |
+| avwap_pullback | 4.7% | −10 pp | **−4.5%** | **+29 pp** (Sharpe better too) | 🟢 risk-control sleeve only |
+| weinstein_stage4_short | n/a | — | — | — | 🔴 do not trade (broken) |
+| overvalued_growth_short | ≈0 | — | small | — | 🟡 insurance — 2022 made $337 |
 
-Detailed table including per-symbol stats and reproduction commands in [backtest_results.md](backtest_results.md).
+**Honest takeaway:** none of these strategies beat passive SPY on absolute returns. Only `avwap_pullback` is risk-adjusted-superior, and only as a low-volatility sleeve. **For most retail traders, SPY-and-chill is the right answer.** See [backtest_results.md](backtest_results.md) for full caveats.
 
 All four are reproducible with one command — see each strategy doc for the exact invocation. The two ⚠️ rows are not strategy failures, they're honest measurements telling us what needs fixing before risking real money.
 

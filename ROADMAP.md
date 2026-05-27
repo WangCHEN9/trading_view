@@ -52,7 +52,9 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Weinstein diagnostic (find blocking condition) | ✅ | Found the bug: macro_ma=200 on weekly chart = 200 WEEKS (~4y), wrong. Pine has same bug. Fixed to 40 (= ~200 days). After fix: strategy fires 507 trades over 10y but still −0.50 R / 21.9% WR. Strategy is fundamentally broken — shorts at 10-week lows = catching falling knives. Marked DO NOT TRADE. |
 | Portfolio mode (shared equity + concurrent cap) | ✅ | `backtest/portfolio.py` — single equity pool, max-N concurrent positions, frictions. CAGR results: consolidation_breakout 13.1%, minervini_sepa 6.2%, avwap_pullback 4.7%. Honest single-account numbers replace inflated parallel-sim aggregates. |
 | Redesign Weinstein OR remove it | ❌ | The 10-condition breakdown entry is fundamentally low-quality. Either rework with proper Stage-3-to-Stage-4 transition detection or remove from repo. |
-| Drawdown comparison vs buy-and-hold SPY | ❌ | consolidation_breakout matches SPY on CAGR; needs DD comparison to justify running over passive buy-and-hold. |
+| Drawdown comparison vs buy-and-hold SPY | ✅ | Built into `backtest/portfolio.py`. Results: SPY 10y CAGR 15.5%, max DD −32%, Sharpe 1.98. NONE of the strategies beat SPY on CAGR. Only avwap_pullback beats SPY on risk-adjusted (Sharpe +0.25, DD −4.5% vs −32%). |
+| 2008-style bear test (longer / deeper bear) | ❌ | This 10y window had only one short bear (2022). Strategies' true value emerges in 2008-style drawdowns. Need point-in-time index data + 2007-2009 history. |
+| Cash-during-inactive accrual | ❌ | Strategies hold cash most of the time. Real-world T-bill yield (4-5%) would add 1-2pp to CAGR. Currently modeled as 0% cash return. |
 | Anti-overfitting practices (OOS / WFA / sensitivity / MC / random benchmark) | ❌ | See `docs/backtest_methodology.md` for the full list. Highest priority: time-based train/test split in `runner.py`, then slippage/commission, then walk-forward harness. |
 | Walk-forward / OOS split | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
 | Slippage + commission realism | ❌ | Add to backtest engine; TV strategy settings too |

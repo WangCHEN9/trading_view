@@ -10,19 +10,58 @@ Each row below is reproducible by re-running the command shown. CSVs written to 
 
 ---
 
-## ⭐ Portfolio mode — the honest single-account numbers
+## ⭐ Portfolio mode + SPY-benchmark — the honest scorecard
 
-The "headline summary" table below shows per-symbol simulations (each starts with its own $100K). **Real-world expectation is the portfolio simulation here**: one shared equity pool, max 6 concurrent positions, frictions applied.
+The "headline summary" table below shows per-symbol simulations (each starts with its own $100K). **The numbers that matter for a real account are the portfolio-mode + benchmark comparison here**: one shared equity pool, max 6 concurrent positions, frictions applied, side-by-side with passive SPY buy-and-hold over the same period.
 
-| Strategy | Universe | TF | Trades | Acceptance | WR | Avg R | **CAGR** | Final equity |
+| Strategy | CAGR | vs SPY | Max DD | vs SPY | Sharpe | vs SPY | Sortino | vs SPY |
 |---|---|---|---|---|---|---|---|---|
-| **consolidation_breakout** | sp500 | 1wk | 215 | 7.4% | 37.7% | 0.39 | **13.1%** | $317K |
-| **minervini_sepa** (0.8 VCP) | sp500 | 1d | 364 | 41.8% | 29.1% | 0.19 | 6.2% | $171K |
-| **avwap_pullback** | sp500 | 1d | 316 | 65.4% | 49.1% | 0.05 | 4.7% | $140K |
+| **SPY buy-and-hold (benchmark)** | **15.5%** | — | **−32.2%** | — | **1.98** | — | **2.45** | — |
+| consolidation_breakout | 13.5% | −2.0 pp | **−23.3%** | **+9 pp better** | 0.71 | −1.26 worse | 0.67 | −1.78 worse |
+| minervini_sepa (0.8 VCP) | 6.2% | −9.0 pp | −37.3% | −4 pp worse | 0.46 | −0.40 worse | 0.62 | −0.42 worse |
+| avwap_pullback | 4.7% | −9.6 pp | **−4.5%** | **+29 pp better** | **1.06** | **+0.25 better** | 0.95 | −0.01 worse |
 
-**Buy-and-hold SPY same period:** ~13% CAGR. So:
-- `consolidation_breakout` **matches SPY on raw return** — only worth running if drawdown profile is meaningfully better (TODO: measure DD vs SPY)
-- `minervini_sepa` and `avwap_pullback` **underperform** buy-and-hold by 7–8 pp/year
+### Brutally honest verdict
+
+**None of the strategies beat passive SPY on CAGR.** Only one is risk-adjusted-superior to SPY.
+
+| Strategy | Recommendation | Why |
+|---|---|---|
+| `consolidation_breakout` | 🟡 **Marginal hold** | -2pp CAGR but 9pp lower max DD. Active complexity for modest DD protection. If you'd panic-sold SPY at -32%, this is worth running. Otherwise SPY-and-chill wins. |
+| `minervini_sepa` | 🔴 **Do not trade** | Worse than SPY on EVERY metric — CAGR, DD, Sharpe, Sortino. Active complexity for nothing. |
+| `avwap_pullback` | 🟢 **Risk-control sleeve** | Only strategy with a real risk-adjusted edge. **−4.5% max DD vs SPY's −32%** is dramatic. Use as low-volatility allocation, NOT as primary return driver. |
+| `weinstein_stage4_short` | 🔴 **Do not trade** | -0.50 R, 22% WR, broken thesis |
+| `overvalued_growth_short` | 🟡 **Insurance only** | Flat in bulls (correctly). +$337 in 2022. Treat as portfolio hedge, expect ~0 most years. |
+
+### Critical caveats
+
+1. **This 10y period was a near-pure bull market.** Only one short bear (2022 was -25% peak-to-trough on SPY and recovered in months). The strategies' theoretical value is conserved when SPY has a 2008-style 50%+ drawdown lasting years.
+2. **Cash drag not modeled.** When the strategy is in cash (which is most of the time), real-world T-bill yield 4-5% would add ~1-2pp to strategy CAGR. Doesn't change the verdict but worth knowing.
+3. **Sharpe penalty for inactivity.** Strategy Sharpe is calculated on equity changes; long periods of flat equity (in cash) reduce numerator more than denominator. SPY's smooth uptrend is mechanically Sharpe-favorable.
+4. **Survivorship bias still present.** SP500 universe is *current* members; delisted losers (BBBY, FRC, SVB) excluded. Real strategies likely worse than measured here.
+
+### What this tells the operator
+
+The honest takeaway:
+- **For 80% of retail traders, passive SPY is the right answer.** This backtest shows why.
+- Only run an active strategy if you have a specific reason: drawdown intolerance (use consolidation_breakout), volatility tolerance (use SPY+leverage), or you genuinely enjoy the work.
+- The aVWAP pullback's risk-adjusted edge is real but the absolute returns are too low to be a primary engine — it might pair well as 20-30% of a portfolio with the rest in SPY or trend-followed equities.
+
+Reproduce with:
+```bash
+uv run python -m backtest.portfolio --strategy consolidation_breakout --universe sp500 \
+     --period 10y --interval 1wk --max-positions 6 --slippage-bps 5 --commission 1
+```
+
+### Concurrency sensitivity on consolidation_breakout
+
+| Max concurrent | Trades | Avg R | CAGR | Rejected (no capital) |
+|---|---|---|---|---|
+| 4 | 145 | 0.39 | 9.2% | 2,769 (95%) |
+| **6** | **215** | **0.39** | **13.1%** | **2,699 (93%)** |
+| 10 | 359 | 0.25 | 11.8% | 2,555 (88%) |
+
+Higher concurrency dilutes avg R (you start taking lower-quality signals). Sweet spot ≈ 6.
 
 Reproduce with:
 ```bash

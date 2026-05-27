@@ -170,6 +170,45 @@ def main():
         print("[portfolio] no executed trades")
         return
 
+    df_trades = df_trades.sort_values("exit_date").reset_index(drop=True)
+
+    # ─── Equity curve at each trade close (realized basis) ───────────────────
+    # Group by exit_date so multiple closes on the same date sum into one step
+    daily_pnl = df_trades.groupby("exit_date")["pnl_resized"].sum().sort_index()
+    equity_curve = pd.Series(
+        index=pd.to_datetime(daily_pnl.index),
+        data=(args.initial_equity + daily_pnl.cumsum()).values,
+        name="equity"
+    )
+    # Peak-to-trough max drawdown from this realized series
+    peaks  = equity_curve.cummax()
+    dd     = (equity_curve - peaks) / peaks * 100
+    max_dd = float(dd.min())
+
+    # Daily-equivalent returns for Sharpe.  Approx: forward-fill equity to a
+    # daily index covering the period, then pct_change.
+    period_start = equity_curve.index.min()
+    period_end   = equity_curve.index.max()
+    daily_idx = pd.date_range(period_start, period_end, freq="B")
+    daily_eq  = equity_curve.reindex(daily_idx, method="ffill").bfill()
+    daily_ret = daily_eq.pct_change().dropna()
+    sharpe    = (daily_ret.mean() / daily_ret.std() * (252 ** 0.5)) if daily_ret.std() > 0 else float("nan")
+    neg_ret   = daily_ret[daily_ret < 0]
+    sortino   = (daily_ret.mean() / neg_ret.std() * (252 ** 0.5)) if len(neg_ret) > 1 and neg_ret.std() > 0 else float("nan")
+
+    # ─── SPY buy-and-hold over the same period ───────────────────────────────
+    spy_df = data.load("SPY", interval=args.interval, period=args.period)
+    spy_slice = spy_df.loc[period_start:period_end]
+    spy_ret_total = float(spy_slice["close"].iloc[-1] / spy_slice["close"].iloc[0] - 1)
+    spy_final = args.initial_equity * (1 + spy_ret_total)
+    spy_daily = spy_slice["close"].pct_change().dropna()
+    spy_peaks = spy_slice["close"].cummax()
+    spy_dd_series = (spy_slice["close"] - spy_peaks) / spy_peaks * 100
+    spy_max_dd = float(spy_dd_series.min())
+    spy_sharpe = (spy_daily.mean() / spy_daily.std() * (252 ** 0.5)) if spy_daily.std() > 0 else float("nan")
+    spy_neg = spy_daily[spy_daily < 0]
+    spy_sortino = (spy_daily.mean() / spy_neg.std() * (252 ** 0.5)) if len(spy_neg) > 1 and spy_neg.std() > 0 else float("nan")
+
     n   = len(df_trades)
     wins   = int((df_trades["pnl_resized"] > 0).sum())
     losses = int((df_trades["pnl_resized"] < 0).sum())
@@ -179,15 +218,19 @@ def main():
     pf = (df_trades.loc[df_trades["pnl_resized"] > 0, "pnl_resized"].sum() /
           -df_trades.loc[df_trades["pnl_resized"] < 0, "pnl_resized"].sum()) \
          if (df_trades["pnl_resized"] < 0).any() else float("inf")
-    years = (df_trades["exit_date"].max() - df_trades["entry_date"].min()).days / 365.25
+    years = (period_end - period_start).days / 365.25
     cagr  = ((equity / args.initial_equity) ** (1 / years) - 1) * 100 if years > 0 else 0
+    spy_cagr = ((1 + spy_ret_total) ** (1 / years) - 1) * 100 if years > 0 else 0
 
-    print(f"\n--- Portfolio aggregate (single shared equity pool) ---")
-    rows = [
+    print(f"\n--- Strategy ---")
+    print(tabulate([
         ["Initial equity",   f"${args.initial_equity:,.0f}"],
         ["Final equity",     f"${equity:,.0f}"],
         ["Net profit",       f"${net:,.0f}"],
         ["CAGR",             f"{cagr:.2f}%"],
+        ["Max drawdown",     f"{max_dd:.1f}%"],
+        ["Sharpe",           f"{sharpe:.2f}"],
+        ["Sortino",          f"{sortino:.2f}"],
         ["Years",            f"{years:.1f}"],
         ["Executed trades",  n],
         ["Rejected (cap)",   rejected],
@@ -196,11 +239,30 @@ def main():
         ["Avg R",            f"{avg_r:.2f}"],
         ["Profit factor",    f"{pf:.2f}" if pf != float('inf') else "inf"],
         ["Max concurrent",   args.max_positions],
-    ]
-    print(tabulate(rows, tablefmt="github"))
+    ], tablefmt="github"))
+
+    print(f"\n--- SPY buy-and-hold (same period) ---")
+    print(tabulate([
+        ["Final equity",  f"${spy_final:,.0f}"],
+        ["CAGR",          f"{spy_cagr:.2f}%"],
+        ["Max drawdown",  f"{spy_max_dd:.1f}%"],
+        ["Sharpe",        f"{spy_sharpe:.2f}"],
+        ["Sortino",       f"{spy_sortino:.2f}"],
+    ], tablefmt="github"))
+
+    print(f"\n--- Verdict ---")
+    print(tabulate([
+        ["CAGR delta",        f"{cagr - spy_cagr:+.2f} pp"],
+        ["Max DD delta",      f"{max_dd - spy_max_dd:+.1f} pp",
+                              "(strategy better)" if max_dd > spy_max_dd else "(strategy worse)"],
+        ["Sharpe delta",      f"{sharpe - spy_sharpe:+.2f}",
+                              "(strategy better)" if sharpe > spy_sharpe else "(strategy worse)"],
+        ["Sortino delta",     f"{sortino - spy_sortino:+.2f}",
+                              "(strategy better)" if sortino > spy_sortino else "(strategy worse)"],
+    ], tablefmt="github"))
 
     out = RESULTS_DIR / f"portfolio_{args.strategy}_{args.universe}.csv"
-    df_trades.sort_values("entry_date").to_csv(out, index=False)
+    df_trades.to_csv(out, index=False)
     print(f"\nWrote: {out}")
 
 
