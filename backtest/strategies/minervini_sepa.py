@@ -27,7 +27,7 @@ class Params:
     ma200_lb:        int   = 22
     pivot_lb:        int   = 15
     vcp_lb:          int   = 10
-    vcp_ratio:       float = 0.6
+    vcp_ratio:       float = 0.8
     vol_mult:        float = 1.5
     atr_len:         int   = 14
     atr_mult:        float = 2.0

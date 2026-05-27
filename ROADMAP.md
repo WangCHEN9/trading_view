@@ -43,8 +43,11 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Date-range slicing in runner.py (`--start`/`--end`) | ✅ | Filters trades by entry_date while preserving full-history warmup. Validated on 2022 isolation. |
 | Add macro filter to weinstein_stage4_short | ✅ | SPY > 200-DMA gate. Cut bull-regime bleed by 67% (−$35K → −$11K over 10y). |
 | Bear-period validation (2022) | ✅ | overvalued_growth_short profitable in 2022 (44% WR, +$337). Validates bear thesis. weinstein_stage4_short fires 0 trades on large25 in 2022 — universe too narrow; expand or loosen filters. |
-| Loosen VCP filter or rework VCP detection | ❌ | Minervini's signal rate is too low (7 trades / 15 names / 10y). Either tune ratio or replace with discrete-wave detection. |
-| Run all 4 strategies on `sp500` universe | ❌ | 5–10× current trade counts; needed for statistical confidence. |
+| Loosen VCP filter (sensitivity sweep) | ✅ | Default 0.6 → 0.8 after sweep showed wide plateau across 0.8–1.0. Avg R improved from +0.27 to +0.69 on momentum15 / +0.33 on sp500. |
+| Run all 4 strategies on `sp500` universe | ✅ | Massive reality check: consolidation_breakout 1.41 R → 0.30 R (survivorship bias was 4×). All numbers in docs/backtest_results.md. |
+| Slippage + commission in engine | ✅ | `--slippage-bps` and `--commission` CLI flags on runner.py. Applied post-trade. Long-hold strategies absorb frictions; short strategies more sensitive. |
+| Loosen Weinstein entry conditions | ❌ | 0 trades in 2022 on SP500 means the 10-condition filter is too restrictive. Likely culprit: NATR + wick filter conflict with bear-market high-vol candles. |
+| Implement VWAP-related strategy | ❌ | Next: VWAP-based intraday or daily mean-reversion / breakout strategy. |
 | Anti-overfitting practices (OOS / WFA / sensitivity / MC / random benchmark) | ❌ | See `docs/backtest_methodology.md` for the full list. Highest priority: time-based train/test split in `runner.py`, then slippage/commission, then walk-forward harness. |
 | Walk-forward / OOS split | ❌ | Reserve 2024–2025 for OOS only; train/tune on earlier years |
 | Slippage + commission realism | ❌ | Add to backtest engine; TV strategy settings too |

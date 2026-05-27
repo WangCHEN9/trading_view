@@ -26,7 +26,8 @@ i_ma200_lb    = input.int  (22,   "200 SMA up-trend lookback (bars)", group="Tre
 
 i_pivot_lb    = input.int  (15,   "Pivot lookback (bars)",            group="Pivot Entry")
 i_vcp_lb      = input.int  (10,   "VCP contraction lookback",         group="Pivot Entry")
-i_vcp_ratio   = input.float(0.6,  "VCP ratio (recent ATR / prior)",   group="Pivot Entry")
+i_vcp_ratio   = input.float(0.8,  "VCP ratio (recent ATR / prior)",   group="Pivot Entry",
+     tooltip="Recent ATR(10) must be < this × prior ATR(10).  0.8 = 20% contraction matches Minervini's discrete-wave description; tighter values (0.6) generate too few signals to be useful.")
 i_vol_mult    = input.float(1.5,  "Volume vs 50-bar avg multiplier",  group="Pivot Entry")
 
 i_atr_len     = input.int  (14,   "ATR length",                       group="Risk")

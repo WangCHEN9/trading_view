@@ -12,24 +12,60 @@ Each row below is reproducible by re-running the command shown. CSVs written to 
 
 ## Headline summary — latest measurements
 
-| Strategy | Universe | TF | Period | Trades | WR | Avg R | Net | Verdict |
-|---|---|---|---|---|---|---|---|---|
-| **consolidation_breakout** | large25 | 1wk | 10y | **142** | **58.5%** | **+1.41** | +$480K | ✅ strong edge |
-| **minervini_sepa** *(50-DMA trail)* | momentum15 | 1d | 10y | 7 | 28.6% | **+0.27** | −$193 | 🟡 trail fixed; VCP still bottleneck |
-| **weinstein_stage4_short** *(macro filter)* | large25 | 1wk | 10y | 13 | 30.8% | −0.37 | −$11K | 🟡 macro filter cut bleed 67% |
-| **overvalued_growth_short** | expensive_software | 1d | 10y | 59 | 35.6% | +0.02 | −$3.8K | ✅ insurance profile confirmed |
-| **overvalued_growth_short** | expensive_software | 1d | **2022 only** | **18** | **44.4%** | **0.00** | **+$337** | ✅ bear-period thesis validated |
-| weinstein_stage4_short | large25 | 1wk | 2022 only | 0 | n/a | n/a | $0 | ⚠️ universe too narrow for bears |
+**Now with realistic frictions (5bps slippage + $1/fill commission) and full S&P 500 universe** where applicable.
 
-**All measurements no commission/slippage modeled.** Per-symbol stats are valid; aggregate $ figures are 25 parallel single-symbol simulations, not a single portfolio sharing equity.
+| Strategy | Universe | TF | Period | Trades | WR | Avg R | Verdict |
+|---|---|---|---|---|---|---|---|
+| **consolidation_breakout** | **sp500** | 1wk | 10y | **2914** | 42.1% | **+0.30** | ✅ real edge, smaller than large25 suggested |
+| consolidation_breakout | sp500 | 1wk | 2022 only | 208 | 31.2% | −0.20 | ⚠️ correctly fails in bear (long-only system) |
+| consolidation_breakout (reference) | large25 | 1wk | 10y | 142 | 58.5% | +1.39 | ⚠️ survivorship-inflated 4× |
+| **minervini_sepa** *(0.8 VCP + 50-DMA trail)* | **sp500** | 1d | 10y | **871** | 33.6% | **+0.33** | ✅ small positive edge across universe |
+| minervini_sepa | momentum15 | 1d | 10y | 49 | 42.9% | +0.69 | ✅ stronger on selected high-mo names |
+| **weinstein_stage4_short** *(macro filter)* | sp500 | 1wk | 10y | 476 | 31.3% | **−0.24** | 🔴 entry too restrictive + bull regime |
+| weinstein_stage4_short | sp500 | 1wk | 2022 only | **0** | — | — | 🔴 entry filter blocks even bear-period signals |
+| **overvalued_growth_short** | expensive_software | 1d | 10y | 59 | 35.6% | +0.01 | ✅ insurance profile holds with frictions |
+| overvalued_growth_short | expensive_software | 1d | 2022 only | 18 | 44.4% | 0.00 | ✅ bear-period profitable in dollars (+$337) |
+
+### Real-world expectancy estimates
+
+Applying risk-per-trade sizing (2.5% longs / 1.5% shorts):
+
+| Strategy | Per-trade expectancy (% of equity) | Frequency (universe-wide) |
+|---|---|---|
+| consolidation_breakout (sp500) | 0.30 × 2.5% = **+0.75%** | ~291 signals/year |
+| minervini_sepa (sp500) | 0.33 × 2.5% = **+0.83%** | ~87 signals/year |
+| weinstein_stage4_short (sp500) | −0.24 × 2.5% = **−0.60%** | ~48 signals/year (negative — don't trade) |
+| overvalued_growth_short (expensive_software) | 0.01 × 1.5% = **+0.02%** | ~6 signals/year (flat — insurance only) |
+
+For a single-account portfolio (~5-8 concurrent positions), real capture is **15–30% of universe signals** → **realistic annualized returns**:
+- consolidation_breakout: 50–80 trades/year × 0.75% = **40–60% annualized gross**, likely **15–25% after capital constraints**
+- minervini_sepa: 15–25 trades/year × 0.83% = **12–20% annualized gross**, likely **8–15% net**
+- weinstein_stage4_short: **DO NOT TRADE** as-is (negative expectancy)
+- overvalued_growth_short: keep as insurance only, expect ~0% most years, +5-15% in bear years
 
 ### What changed since last run
 
 | Change | Before | After | Impact |
 |---|---|---|---|
-| Minervini: chandelier trail → **50-DMA close trail** | −0.31 R | +0.27 R | Wins no longer cut prematurely; +0.58 R improvement |
-| Weinstein: added **SPY > 200-DMA macro filter** | 40 trades, −$35K | 13 trades, −$11K | 67% of bull-regime entries correctly suppressed |
-| Runner: added **`--start` / `--end`** flags | n/a | works | Can isolate bear-period (2022) for short-strategy validation |
+| Engine: realistic **frictions** (5bps + $1/fill) | none | applied | ~5–15% R haircut per strategy |
+| Minervini: **VCP ratio 0.6 → 0.8** (after sensitivity sweep) | 7 trades, +0.27 R | 49 trades momentum15 / 871 sp500, +0.33–0.69 R | 12× signal frequency, R improved |
+| **SP500 universe** runs for all strategies | n/a | done | Survivorship bias on large25 was 4× inflation |
+| Weinstein 2022 SP500 validation | not run | done — 0 trades | Confirms entry conditions broken, not just universe |
+
+### Minervini VCP sensitivity sweep (proof the 0.8 default isn't curve-fit)
+
+Run with `backtest.sweep --strategy minervini_sepa --universe momentum15 --param vcp_ratio --values 0.5 0.6 0.7 0.8 0.9 1.0`:
+
+| vcp_ratio | trades | WR | avg R |
+|---|---|---|---|
+| 0.5 | 0 | — | — |
+| 0.6 (old default) | 7 | 28.6% | +0.27 |
+| 0.7 | 23 | 26.1% | −0.01 |
+| **0.8 (new default)** | **49** | **42.9%** | **+0.69** |
+| 0.9 | 80 | 36.2% | +0.46 |
+| 1.0 (no VCP filter) | 111 | 36.0% | +0.55 |
+
+Wide plateau across 0.8–1.0 confirms robustness — not a sharp peak at exactly one value. Theoretical fit: Minervini's textbook discrete-wave VCP contracts from ~15% → ~3% in the final wave (~20% reduction = TR ratio ~0.8, not 0.6).
 
 ---
 

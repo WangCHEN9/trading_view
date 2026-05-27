@@ -70,6 +70,10 @@ def main():
     ap.add_argument("--initial-equity", type=float, default=100_000.0)
     ap.add_argument("--start", help="YYYY-MM-DD — slice bars to start on/after this date (after download)")
     ap.add_argument("--end",   help="YYYY-MM-DD — slice bars to end on/before this date (after download)")
+    ap.add_argument("--slippage-bps", type=float, default=0.0,
+                    help="Slippage applied per fill (entry + exit) in basis points. 5 = 0.05%.")
+    ap.add_argument("--commission",   type=float, default=0.0,
+                    help="Flat commission per fill in dollars. Round-trip = 2× this.")
     args = ap.parse_args()
 
     symbols = universe.get(args.universe) if args.universe else args.symbols
@@ -96,6 +100,11 @@ def main():
     if start_ts or end_ts:
         print(f"[runner] filtering trades to entries in [{start_ts}, {end_ts}] (full history kept for warmup)")
 
+    slip = args.slippage_bps / 10_000.0
+    if args.slippage_bps or args.commission:
+        print(f"[runner] applying frictions: slippage={args.slippage_bps}bps, "
+              f"commission=${args.commission}/fill")
+
     for sym, df in bars.items():
         # Pass benchmarks if the strategy signature accepts them
         try:
@@ -109,6 +118,22 @@ def main():
             trades = [t for t in trades
                       if (start_ts is None or t["entry_date"] >= start_ts) and
                          (end_ts   is None or t["entry_date"] <= end_ts)]
+
+        # Apply per-trade frictions: slippage on entry+exit, plus 2× commission
+        if slip or args.commission:
+            for t in trades:
+                qty_abs = abs(t["qty"])
+                friction = slip * (t["entry_price"] + t["exit_price"]) * qty_abs \
+                           + 2 * args.commission
+                t["pnl"] = round(t["pnl"] - friction, 2)
+                # Recompute R against original risk (entry − stop for long, stop − entry for short)
+                qty = t["qty"]
+                if qty > 0:  # long
+                    risk_per_share = t["entry_price"] - t["stop"]
+                else:        # short
+                    risk_per_share = t["stop"] - t["entry_price"]
+                if risk_per_share > 0:
+                    t["r_multiple"] = round(t["pnl"] / (risk_per_share * qty_abs), 2)
 
         for t in trades:
             t["symbol"] = sym
