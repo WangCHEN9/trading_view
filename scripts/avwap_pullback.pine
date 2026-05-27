@@ -45,6 +45,16 @@ i_avwap_exit_bars = input.int(2,   "aVWAP-break confirmation bars", group="Risk"
 i_risk_pct     = input.float(2.5,  "Risk % of account per trade",  minval=0.1, maxval=10.0, group="Risk")
 i_max_pos_pct  = input.float(25.0, "Max position % of equity",     minval=1.0, maxval=100.0, group="Risk")
 
+// ─── Fundamentals (quality filter) ───────────────────────────────────────────
+i_use_fund    = input.bool  (true, "Enable fundamental filters",  group="Fundamentals",
+     tooltip="Toggle off for crypto / forex / ETFs.")
+i_fund_period = input.string("TTM",  "Reporting period", options=["TTM", "FQ", "FY"], group="Fundamentals")
+i_pos_ni      = input.bool  (true,  "Require positive Net Income",            group="Fundamentals")
+i_rev_growth  = input.bool  (true,  "Require positive Revenue YoY growth",    group="Fundamentals")
+i_min_opm     = input.float (0.0,   "Min Operating Margin %",                 group="Fundamentals",
+     tooltip="Set to 0 to disable. 5+ filters out unprofitable growth names.")
+i_fund_na_ok  = input.bool  (true,  "Pass when data unavailable (na-safe)",   group="Fundamentals")
+
 // ─── Core indicators ─────────────────────────────────────────────────────────
 sma50  = ta.sma(close, 50)
 sma200 = ta.sma(close, 200)
@@ -75,7 +85,26 @@ stop_at_entry = anchor_low * (1 - i_buffer_pct / 100)
 stop_pct      = (close - stop_at_entry) / close * 100
 stop_ok       = stop_pct <= i_max_stop and stop_at_entry > 0
 
-long_signal   = uptrend and above_avwap and pullback_touched and bounce_candle and stop_ok
+// ─── Fundamental gate (na-safe) ───────────────────────────────────────────────
+f_net_income  = request.financial(syminfo.tickerid, "NET_INCOME",    i_fund_period, ignore_invalid_symbol=true)
+f_revenue     = request.financial(syminfo.tickerid, "TOTAL_REVENUE", i_fund_period, ignore_invalid_symbol=true)
+f_oper_income = request.financial(syminfo.tickerid, "OPER_INCOME",   i_fund_period, ignore_invalid_symbol=true)
+
+f_opm = not na(f_oper_income) and not na(f_revenue) and f_revenue > 0 ?
+          f_oper_income / f_revenue * 100 : na
+
+f_rev_up_q = not na(f_revenue) and not na(f_revenue[252]) ?
+             f_revenue > f_revenue[252] : i_fund_na_ok
+
+ni_pos_ok = not na(f_net_income) ? f_net_income > 0 : i_fund_na_ok
+opm_ok    = na(f_opm) ? i_fund_na_ok : f_opm >= i_min_opm
+
+fund_ok = not i_use_fund or (
+     (not i_pos_ni     or ni_pos_ok) and
+     (not i_rev_growth or f_rev_up_q) and
+     opm_ok)
+
+long_signal   = uptrend and above_avwap and pullback_touched and bounce_candle and stop_ok and fund_ok
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // POSITION MANAGEMENT

@@ -14,6 +14,12 @@ Two layers:
 
 ## Entry rules
 
+The strategy is now a **three-layer filter** — all three must pass on the signal bar:
+
+1. **Trend Template** — 7-of-8 + RS proxy (see below)
+2. **Fundamental gate** — Minervini's quality screen (added this session)
+3. **VCP + pivot break + volume** — entry trigger
+
 ### Trend Template (7 of 8 Minervini conditions verbatim)
 
 1. Price > 150-SMA *and* > 200-SMA
@@ -25,9 +31,24 @@ Two layers:
 7. Price within 25% of its 52-week high
 8. *RS proxy:* stock's 3-month return > SPY's 3-month return (substitutes for IBD's RS rank ≥ 70, which isn't available in Pine)
 
+### Fundamental gate (Minervini's quality screen — TradingView `request.financial`)
+
+All four must be true (each individually toggleable; defaults shown):
+
+| Filter | Default | Source |
+|---|---|---|
+| Net Income > 0 (positive earnings, no money-losers) | ON | `NET_INCOME` TTM |
+| Net Income YoY growth positive | ON | `NET_INCOME[0] > NET_INCOME[252]` |
+| Revenue YoY growth positive | ON | `TOTAL_REVENUE[0] > TOTAL_REVENUE[252]` |
+| Operating margin ≥ 5% | 5% | `OPER_INCOME / TOTAL_REVENUE × 100` |
+
+For non-stock symbols (crypto/forex/ETFs), `request.financial` returns `na`. The `i_fund_na_ok` toggle (default ON) lets signals through when data is missing — safe default for mixed-asset watchlists.
+
+**Why this matters for Minervini:** his real-world process rejects stocks with weak earnings even when the technical setup is perfect. Adding this filter brings the script closer to his published methodology, AND should reduce false-positive entries on speculative growth names that pass the technical template but fundamentally shouldn't be bought at premium multiples.
+
 ### VCP + Pivot
 
-- **VCP:** recent 10-bar ATR < 60% of the prior 10-bar ATR (range has tightened)
+- **VCP:** recent 10-bar ATR < 80% of the prior 10-bar ATR (range has tightened)
 - **Pivot break:** close above the highest high of the prior 15 bars
 - **Volume confirmation:** today's volume > 1.5× the 50-day average
 - **Stop sanity:** initial stop (entry − 2× ATR) must be ≤ 10% below entry

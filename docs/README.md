@@ -8,7 +8,6 @@ This folder explains each strategy and screener: what it does, why, and what to 
 |---|---|---|---|
 | [Consolidation Breakout](strategies/consolidation_breakout.md) | `scripts/consolidation_breakout.pine` | Weekly | LONG |
 | [Minervini SEPA](strategies/minervini_sepa.md) | `scripts/minervini_sepa.pine` | Daily | LONG |
-| [Weinstein Stage 4 Short](strategies/weinstein_stage4_short.md) | `scripts/weinstein_stage4_short.pine` | Weekly | SHORT |
 | [Overvalued Growth Breakdown Short](strategies/overvalued_growth_short.md) | `scripts/overvalued_growth_short.pine` | Daily | SHORT |
 | [Anchored VWAP Pullback](strategies/avwap_pullback.md) | `scripts/avwap_pullback.pine` | Daily | LONG |
 
@@ -80,6 +79,21 @@ uv run python -m backtest.runner --strategy consolidation_breakout --universe sp
 
 Architecture and caveats documented in the in-code docstring of each module.
 
+## Fundamental filters — which strategies use TradingView's request.financial
+
+TradingView exposes FactSet fundamentals via `request.financial(syminfo.tickerid, "FIELD", "TTM")`. We use them in 4 of 5 long-side strategies:
+
+| Strategy | Net Income > 0 | NI YoY ↑ | Rev YoY ↑ | Min OPM | Min ROE | Min ROC |
+|---|---|---|---|---|---|---|
+| `consolidation_breakout` | — | ✓ | ✓ | 10% | 10% | 10% |
+| `minervini_sepa` (new) | ✓ | ✓ | ✓ | 5% | — | — |
+| `avwap_pullback` (new) | ✓ | — | ✓ | 0% (off by default) | — | — |
+| `overvalued_growth_short` | flips logic — flags **negative** NI or rich P/S | — | — | — | — | — |
+
+All four use `ignore_invalid_symbol=true` so non-stock symbols (crypto/forex/ETFs) don't crash the script. Each has a `i_fund_na_ok` toggle that lets signals through when FactSet has no data (e.g., recent IPOs).
+
+**Python backtest caveat:** The Python harness in `backtest/` does NOT replicate the fundamental filters — yfinance fundamental history is unreliable and not point-in-time. Pine backtests + live trading get the full filter; Python harness measures the **technical-only** edge as a lower bound on real performance.
+
 ## Backtest methodology — read before tuning
 
 See [backtest_methodology.md](backtest_methodology.md) for the full discussion of how to make backtests honest and avoid overfitting. The 10 practices to apply (and 10 traps to avoid) summarize down to: **fewer parameters, broader universe, longer history, harsher frictions** — the strategy that survives all four is worth trading.
@@ -94,7 +108,6 @@ See [backtest_methodology.md](backtest_methodology.md) for the full discussion o
 | consolidation_breakout | 13.5% | −2 pp | **−23%** | **+9 pp** | 🟡 marginal — DD edge only |
 | minervini_sepa | 6.2% | −9 pp | −37% | −4 pp | 🔴 do not trade |
 | avwap_pullback | 4.7% | −10 pp | **−4.5%** | **+29 pp** (Sharpe better too) | 🟢 risk-control sleeve only |
-| weinstein_stage4_short | n/a | — | — | — | 🔴 do not trade (broken) |
 | overvalued_growth_short | ≈0 | — | small | — | 🟡 insurance — 2022 made $337 |
 
 **Honest takeaway:** none of these strategies beat passive SPY on absolute returns. Only `avwap_pullback` is risk-adjusted-superior, and only as a low-volatility sleeve. **For most retail traders, SPY-and-chill is the right answer.** See [backtest_results.md](backtest_results.md) for full caveats.

@@ -12,7 +12,7 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 |---|---|---|
 | Weekly consolidation breakout (LONG) | ✅ | `scripts/consolidation_breakout.pine` — w/ fundamental filters |
 | Minervini SEPA + VCP (LONG, daily) | ✅ | `scripts/minervini_sepa.pine` |
-| Weinstein Stage 4 breakdown (SHORT, weekly) | ✅ | `scripts/weinstein_stage4_short.pine` |
+| Weinstein Stage 4 breakdown (SHORT, weekly) | 🗑️ REMOVED | Strategy fundamentally broken (−0.50 R, 22% WR even in 2022 bear). Files deleted commit pending. Pure technical breakdown without fundamental thesis = catching falling knives. Replace with a proper short-side strategy when designed. |
 | Overvalued growth breakdown (SHORT, daily) | ✅ | `scripts/overvalued_growth_short.pine` + matching screener — three-layer filter (valuation + deterioration + technical), macro override, tight 1.5% risk sizing |
 | Mean-reversion (RSI(2) / pullback to MA) | ❌ | Larry Connors style |
 | Donchian / Turtle trend follower | ❌ | Pure breakout, no fundamentals |
@@ -51,7 +51,8 @@ Legend:  ✅ done · 🟡 partial · ❌ not started
 | Improve aVWAP exit (2-bar confirmation) | ✅ | Default avwap_exit_bars=2 in both Pine and Python. Result: +0.04 → +0.05 R — minimal impact. Entry quality is the real bottleneck, not exit. |
 | Weinstein diagnostic (find blocking condition) | ✅ | Found the bug: macro_ma=200 on weekly chart = 200 WEEKS (~4y), wrong. Pine has same bug. Fixed to 40 (= ~200 days). After fix: strategy fires 507 trades over 10y but still −0.50 R / 21.9% WR. Strategy is fundamentally broken — shorts at 10-week lows = catching falling knives. Marked DO NOT TRADE. |
 | Portfolio mode (shared equity + concurrent cap) | ✅ | `backtest/portfolio.py` — single equity pool, max-N concurrent positions, frictions. CAGR results: consolidation_breakout 13.1%, minervini_sepa 6.2%, avwap_pullback 4.7%. Honest single-account numbers replace inflated parallel-sim aggregates. |
-| Redesign Weinstein OR remove it | ❌ | The 10-condition breakdown entry is fundamentally low-quality. Either rework with proper Stage-3-to-Stage-4 transition detection or remove from repo. |
+| Redesign Weinstein OR remove it | ✅ removed | All files deleted; doc/memory updated. Future short strategy must combine fundamentals + technicals, not pure technical breakdowns. |
+| Fundamental filters on remaining long strategies | ✅ | Added Minervini-style quality gate (NI>0, NI YoY+, Rev YoY+, OPM≥5%) to `minervini_sepa.pine`. Added lighter quality gate (NI>0, Rev YoY+) to `avwap_pullback.pine`. Uses TradingView `request.financial`. Python harness does not replicate (yfinance fundamentals unreliable). |
 | Drawdown comparison vs buy-and-hold SPY | ✅ | Built into `backtest/portfolio.py`. Results: SPY 10y CAGR 15.5%, max DD −32%, Sharpe 1.98. NONE of the strategies beat SPY on CAGR. Only avwap_pullback beats SPY on risk-adjusted (Sharpe +0.25, DD −4.5% vs −32%). |
 | 2008-style bear test (longer / deeper bear) | ❌ | This 10y window had only one short bear (2022). Strategies' true value emerges in 2008-style drawdowns. Need point-in-time index data + 2007-2009 history. |
 | Cash-during-inactive accrual | ❌ | Strategies hold cash most of the time. Real-world T-bill yield (4-5%) would add 1-2pp to CAGR. Currently modeled as 0% cash return. |

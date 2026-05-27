@@ -26,7 +26,6 @@ RESULTS_DIR.mkdir(exist_ok=True)
 STRATEGY_BENCHMARKS: dict[str, list[str]] = {
     "consolidation_breakout":   [],
     "minervini_sepa":           ["SPY"],
-    "weinstein_stage4_short":   ["SPY"],
     "overvalued_growth_short":  ["SPY", "IGV", "VIX"],
     "avwap_pullback":           [],
 }

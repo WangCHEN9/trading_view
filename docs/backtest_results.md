@@ -30,7 +30,6 @@ The "headline summary" table below shows per-symbol simulations (each starts wit
 | `consolidation_breakout` | 🟡 **Marginal hold** | -2pp CAGR but 9pp lower max DD. Active complexity for modest DD protection. If you'd panic-sold SPY at -32%, this is worth running. Otherwise SPY-and-chill wins. |
 | `minervini_sepa` | 🔴 **Do not trade** | Worse than SPY on EVERY metric — CAGR, DD, Sharpe, Sortino. Active complexity for nothing. |
 | `avwap_pullback` | 🟢 **Risk-control sleeve** | Only strategy with a real risk-adjusted edge. **−4.5% max DD vs SPY's −32%** is dramatic. Use as low-volatility allocation, NOT as primary return driver. |
-| `weinstein_stage4_short` | 🔴 **Do not trade** | -0.50 R, 22% WR, broken thesis |
 | `overvalued_growth_short` | 🟡 **Insurance only** | Flat in bulls (correctly). +$337 in 2022. Treat as portfolio hedge, expect ~0 most years. |
 
 ### Critical caveats
@@ -92,8 +91,6 @@ Higher concurrency dilutes avg R (you start taking lower-quality signals). Sweet
 | consolidation_breakout (reference) | large25 | 1wk | 10y | 142 | 58.5% | +1.39 | ⚠️ survivorship-inflated 4× |
 | **minervini_sepa** *(0.8 VCP + 50-DMA trail)* | **sp500** | 1d | 10y | **871** | 33.6% | **+0.33** | ✅ small positive edge across universe |
 | minervini_sepa | momentum15 | 1d | 10y | 49 | 42.9% | +0.69 | ✅ stronger on selected high-mo names |
-| **weinstein_stage4_short** *(macro 40w fix)* | sp500 | 1wk | 10y | 507 | 21.9% | **−0.50** | 🔴 DO NOT TRADE — strategy fundamentally broken |
-| weinstein_stage4_short | sp500 | 1wk | 2022 only | 212 | 25.0% | −0.43 | 🔴 loses in 2022 bear too — fix needed |
 | **overvalued_growth_short** | expensive_software | 1d | 10y | 59 | 35.6% | +0.01 | ✅ insurance profile holds with frictions |
 | overvalued_growth_short | expensive_software | 1d | 2022 only | 18 | 44.4% | 0.00 | ✅ bear-period profitable in dollars (+$337) |
 | **avwap_pullback** *(2-bar aVWAP exit)* | sp500 | 1d | 10y | 483 | 44.9% | **+0.05** | 🟡 marginal — 2-bar exit barely helps (+0.01 R); entry quality is the issue |

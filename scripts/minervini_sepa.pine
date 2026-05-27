@@ -12,11 +12,14 @@ strategy("Minervini SEPA Trend Template  [LONG / Daily]",
 //
 // 2× US Investing Champion (1997, 2021).  Book: "Trade Like a Stock Market Wizard."
 //
-// The strategy has two layers:
-//   1. TREND TEMPLATE  — 8 conditions that filter for stocks in stage-2 uptrend
-//   2. VCP / PIVOT BUY — entry on a breakout from a volatility-contraction pivot
+// The strategy has THREE layers:
+//   1. TREND TEMPLATE   — 8 conditions filtering for stocks in stage-2 uptrend
+//   2. FUNDAMENTAL GATE — Minervini's quality screen: positive + growing earnings,
+//                          revenue growth, operating margin > 5%
+//   3. VCP / PIVOT BUY  — entry on breakout from a volatility-contraction pivot
 //
-// Designed for the DAILY timeframe.  Stocks only (uses 52-week high/low logic).
+// Designed for the DAILY timeframe.  Stocks only (uses 52-week high/low logic
+// AND request.financial fundamental data).
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── Inputs ───────────────────────────────────────────────────────────────────
@@ -38,6 +41,17 @@ i_risk_pct    = input.float(2.5,  "Risk % of account per trade",      minval=0.1
      tooltip="Position size = (equity × risk%) / (entry − stop).")
 i_max_pos_pct = input.float(25.0, "Max position % of equity",         minval=1.0, maxval=100.0, group="Risk",
      tooltip="Cap on position size as % of equity.")
+
+// ─── Fundamentals (Minervini's quality screen) ────────────────────────────────
+i_use_fund    = input.bool  (true, "Enable fundamental filters",   group="Fundamentals",
+     tooltip="Toggle off for crypto / forex / ETFs (no fundamentals).")
+i_fund_period = input.string("TTM",  "Reporting period",
+     options=["TTM", "FQ", "FY"],                                  group="Fundamentals")
+i_ni_growth   = input.bool  (true,  "Require positive Net Income YoY growth", group="Fundamentals")
+i_rev_growth  = input.bool  (true,  "Require positive Revenue YoY growth",    group="Fundamentals")
+i_pos_ni      = input.bool  (true,  "Require positive Net Income (no losers)", group="Fundamentals")
+i_min_opm     = input.float (5.0,   "Min Operating Margin %",                  group="Fundamentals")
+i_fund_na_ok  = input.bool  (true,  "Pass when data unavailable (na-safe)",    group="Fundamentals")
 
 // ─── Moving averages ──────────────────────────────────────────────────────────
 sma50  = ta.sma(close, 50)
@@ -89,8 +103,37 @@ stop_initial  = close - atr * i_atr_mult
 stop_pct      = (close - stop_initial) / close * 100
 stop_ok       = stop_pct <= i_max_stop
 
+// ─── Fundamental gate (Minervini quality screen) ──────────────────────────────
+// Pulls TTM (default) Net Income, Revenue, Operating Income from FactSet via Pine.
+// Returns na for non-stock symbols — handled by i_fund_na_ok.
+f_net_income  = request.financial(syminfo.tickerid, "NET_INCOME",    i_fund_period, ignore_invalid_symbol=true)
+f_revenue     = request.financial(syminfo.tickerid, "TOTAL_REVENUE", i_fund_period, ignore_invalid_symbol=true)
+f_oper_income = request.financial(syminfo.tickerid, "OPER_INCOME",   i_fund_period, ignore_invalid_symbol=true)
+
+// Operating margin
+f_opm = not na(f_oper_income) and not na(f_revenue) and f_revenue > 0 ?
+          f_oper_income / f_revenue * 100 : na
+
+// YoY growth — 252 daily bars back
+f_ni_up_q  = not na(f_net_income) and not na(f_net_income[252]) ?
+             f_net_income > f_net_income[252] : i_fund_na_ok
+f_rev_up_q = not na(f_revenue) and not na(f_revenue[252]) ?
+             f_revenue > f_revenue[252] : i_fund_na_ok
+
+// Helper: returns true when metric passes threshold, or when data is missing and na-pass is on
+f_pass(val, threshold) =>
+    na(val) ? i_fund_na_ok : val >= threshold
+
+ni_positive_ok  = not na(f_net_income) ? f_net_income > 0 : i_fund_na_ok
+
+fund_ok = not i_use_fund or (
+     (not i_ni_growth  or f_ni_up_q)  and
+     (not i_rev_growth or f_rev_up_q) and
+     (not i_pos_ni     or ni_positive_ok) and
+     f_pass(f_opm, i_min_opm))
+
 // ─── Entry signal ─────────────────────────────────────────────────────────────
-long_signal = trend_template and vcp_ok and pivot_break and vol_spike and stop_ok
+long_signal = trend_template and vcp_ok and pivot_break and vol_spike and stop_ok and fund_ok
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // POSITION MANAGEMENT
@@ -148,6 +191,10 @@ if long_signal and not in_pos
                  "\nShares: "     + str.tostring(trade_qty) +
                  "  Risk: $"      + str.tostring(math.round(trade_qty * risk_per_share, 0)) +
                  " (" + str.tostring(i_risk_pct) + "%)"                            +
+                 "\n── Fundamentals ──"                                            +
+                 "\nOPM: " + (na(f_opm) ? "n/a" : str.tostring(math.round(f_opm, 1)) + "%") +
+                 "\nNI YoY+: " + str.tostring(f_ni_up_q) +
+                 "  Rev YoY+: " + str.tostring(f_rev_up_q)                         +
                  "\nVCP ratio: "  + str.tostring(math.round(atr_recent / atr_prior, 2)) +
                  "\nvs SPY 3M: "  + str.tostring(math.round((stk_ret - nz(spy_ret, 0)) * 100, 1)) + "%",
          style = label.style_label_up,

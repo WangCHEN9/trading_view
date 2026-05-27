@@ -41,6 +41,7 @@ For **live trading**, override the mechanical anchor with discretionary judgment
 3. **Pullback occurred** — the bar low came within `pullback_pct` (default 2%) of the aVWAP within the last `pullback_lb` bars (default 5)
 4. **Bounce candle** — current bar: close > open AND close > prior close AND close > prior high
 5. **Stop sanity** — distance from close to stop level ≤ `max_stop_pct` (default 20%)
+6. **Fundamental gate** — positive Net Income AND positive Revenue YoY growth (optional Min Operating Margin %). Toggleable via `i_use_fund` for crypto/forex. Uses TradingView `request.financial`. Filters out unprofitable / declining-growth names where the technical pullback setup may still trigger but the business doesn't justify holding.
 
 ## Exit rules
 
