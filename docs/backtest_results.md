@@ -52,6 +52,24 @@ uv run python -m backtest.portfolio --strategy consolidation_breakout --universe
      --period 10y --interval 1wk --max-positions 6 --slippage-bps 5 --commission 1
 ```
 
+### Smart Money Concepts (SMC) structure-break test (tech/auto focus)
+
+Built `smc_structure.py` — the tradeable core of LuxAlgo's Smart Money Concepts (BOS/CHoCH structure breaks). SMC is the most popular indicator on TradingView (millions of users), 100% price geometry, no order flow.
+
+| | Trades | WR | Avg R |
+|---|---|---|---|
+| SMC structure — tech_auto | 783 | 45.5% | +0.28 |
+| SMC structure — SP500 | 8135 | 43.3% | +0.21 |
+
+Portfolio mode (tech_auto, 6 concurrent, vs SPY):
+
+| | CAGR | Max DD | Sharpe | Sortino |
+|---|---|---|---|---|
+| SMC structure | 10.2% | −33.2% | 0.84 | 0.64 |
+| SPY buy-and-hold | **15.7%** | −33.7% | **0.90** | **1.08** |
+
+**Verdict: same thin edge as every price-pattern strategy (+0.2-0.28 R), underperforms SPY by 5.5pp with no DD/Sharpe advantage.** SMC's "Smart Money" branding adds nothing over plain structure-break. Two compounding reasons it's a *bad* table: (1) pure price geometry — arbitraged away in efficient large caps; (2) most crowded retail concept on earth — a level everyone draws is retail consensus, not edge. On tech/auto mega-caps (the hardest table), it's worse than our generic consolidation_breakout. Confirms the poker table-selection thesis: crowded concept + hard table = no edge.
+
 ### Market-cap tier test (does edge survive in small/mid caps?)
 
 Hypothesis: order-flow / pattern edges survive better in less-efficient small caps. **Refuted.** All at 5bps + $1, 10y:

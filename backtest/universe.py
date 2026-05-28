@@ -48,6 +48,17 @@ EXPENSIVE_SOFTWARE = [
     "NVDA", "AVGO", "ARM",
 ]
 
+# Tech + Automobile focus (user's chosen sectors). Liquid US-listed.
+TECH_AUTO = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "AVGO", "AMD",
+    "CRM", "ORCL", "ADBE", "CSCO", "ACN", "INTC", "QCOM", "TXN", "IBM",
+    "NOW", "INTU", "AMAT", "MU", "ADI", "LRCX", "KLAC", "SNPS", "CDNS",
+    "PANW", "CRWD", "FTNT", "PLTR", "SNOW", "NET", "DDOG", "MDB", "ANET",
+    "DELL", "HPQ", "SMCI", "ARM",
+    "TSLA", "F", "GM", "RIVN", "LCID", "STLA", "HMC", "TM", "RACE",
+    "APTV", "BWA", "LEA", "ALV", "MGA", "GPC",
+]
+
 def get(name: str) -> list[str]:
     """Return symbols for a named universe.
 
@@ -59,6 +70,7 @@ def get(name: str) -> list[str]:
         "large25":    LARGE_CAP_25,
         "momentum15": MOMENTUM_15,
         "expensive_software": EXPENSIVE_SOFTWARE,
+        "tech_auto":  TECH_AUTO,
     }
     if name in static:
         return static[name]
