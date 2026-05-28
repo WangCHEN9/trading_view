@@ -98,6 +98,10 @@ All four use `ignore_invalid_symbol=true` so non-stock symbols (crypto/forex/ETF
 
 **Python backtest caveat:** The Python harness in `backtest/` does NOT replicate the fundamental filters — yfinance fundamental history is unreliable and not point-in-time. Pine backtests + live trading get the full filter; Python harness measures the **technical-only** edge as a lower bound on real performance.
 
+## ⭐ Thesis-Trade Playbook — domain-edge trading (tech/auto)
+
+If your edge is **sector knowledge** (you work in/understand tech & auto), the toolkit is the execution + risk + verification layer for your views — not the edge itself. **[thesis_trade_playbook.md](thesis_trade_playbook.md)**: the thesis-trade workflow, the MNPI/insider guardrail, the "is it priced in?" discipline, risk rules for a concentrated sector book, and the thesis-vs-timing journal split that measures whether your edge is real.
+
 ## ⭐ Discretionary Playbook — how to actually use this toolkit
 
 After testing everything, the durable conclusion is that no mechanical setup beats buy-and-hold SPY in large caps. The toolkit's real value is as a **disciplined funnel + risk framework for discretionary trading**. **[discretionary_playbook.md](discretionary_playbook.md)** is the operating manual: weekly routine, per-candidate review, execution/risk rules, what not to do, and honest expectations. Read it before trading real money.
