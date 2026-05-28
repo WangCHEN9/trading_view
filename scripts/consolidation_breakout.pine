@@ -22,6 +22,14 @@ i_wick_max    = input.float(50.0, "Max Upper Wick % of candle range",      group
 
 // Risk
 i_max_stop    = input.float(20.0, "Max Allowed Stop Loss %",               group="Risk Management")
+
+// Delta-accumulation filter (REAL lower-timeframe delta)
+i_use_delta   = input.bool  (false, "Require delta accumulation in base",  group="Delta Filter",
+     tooltip="Only take the breakout if net buy/sell delta accumulated positively during the consolidation. Uses real intrabar delta via request.security_lower_tf (needs Premium for fine sub-bars).")
+i_delta_ltf   = input.timeframe("D", "Delta sub-timeframe",                group="Delta Filter",
+     tooltip="Sub-bars used to estimate intrabar buy/sell volume per weekly bar. 'D' = daily sub-bars within each week.")
+i_delta_min   = input.float (0.0,  "Min net delta ratio in base",         group="Delta Filter",
+     tooltip="Accumulated (buy-sell)/total over the base must exceed this. 0 = any net buying.")
 i_risk_pct    = input.float(2.5,  "Risk % of account per trade",           minval=0.1, maxval=10.0, group="Risk Management",
      tooltip="Position size = (equity × risk%) / (entry − stop).  Each trade risks this % of total account on stop-out.")
 i_max_pos_pct = input.float(25.0, "Max position % of equity (ceiling)",    minval=1.0, maxval=100.0, group="Risk Management",
@@ -120,9 +128,34 @@ natr_ok      = natr < i_natr_max                                      // low vol
 stop_ok      = c_rng > 0 and
      (close - stop_at_entry) / close * 100 <= i_max_stop
 
+// ── Real intrabar delta per (weekly) bar via request.security_lower_tf ─────────
+// Classify each sub-bar as buy (close>open) or sell (close<open) volume.
+f_bar_delta() =>
+    [vArr, cArr, oArr] = request.security_lower_tf(syminfo.tickerid, i_delta_ltf, [volume, close, open], ignore_invalid_timeframe=true)
+    float buy  = 0.0
+    float sell = 0.0
+    int n = array.size(vArr)
+    if n > 0
+        for k = 0 to n - 1
+            float cc = array.get(cArr, k)
+            float oo = array.get(oArr, k)
+            float vv = array.get(vArr, k)
+            if cc > oo
+                buy += vv
+            else if cc < oo
+                sell += vv
+    buy - sell
+
+bar_delta_val = f_bar_delta()
+// Accumulate over the base window (prior i_consol_len bars, excluding breakout bar)
+accum_delta = math.sum(bar_delta_val, i_consol_len)[1]
+accum_vol   = math.sum(volume,        i_consol_len)[1]
+delta_ratio = accum_vol > 0 ? accum_delta / accum_vol : 0.0
+delta_ok    = not i_use_delta or delta_ratio > i_delta_min
+
 long_signal  = above_ma and macd_bull and breakout and
      valid_size and valid_wick and vol_ok and
-     new_10wk_hi and natr_ok and stop_ok and fund_ok
+     new_10wk_hi and natr_ok and stop_ok and fund_ok and delta_ok
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // POSITION MANAGEMENT
@@ -220,7 +253,8 @@ if long_signal and not in_pos
                  "\n── Fundamentals ──"                                               +
                  "\nROE: "  + f_str(f_roe)  + "  ROC: " + f_str(f_roc)              +
                  "\nOPM: "  + f_str(f_opm)                                           +
-                 "\nRev↑: " + str.tostring(f_rev_up) + "  NI↑: " + str.tostring(f_ni_up),
+                 "\nRev↑: " + str.tostring(f_rev_up) + "  NI↑: " + str.tostring(f_ni_up) +
+                 "\nBase Δ: " + str.tostring(math.round(delta_ratio * 100, 1)) + "%",
          style = label.style_label_up,
          color = color.new(color.green, 20),
          textcolor = color.white,

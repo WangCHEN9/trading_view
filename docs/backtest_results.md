@@ -52,6 +52,17 @@ uv run python -m backtest.portfolio --strategy consolidation_breakout --universe
      --period 10y --interval 1wk --max-positions 6 --slippage-bps 5 --commission 1
 ```
 
+### Delta-accumulation filter on consolidation_breakout (Range Intelligence + Dynamic Delta FVG synthesis)
+
+Hypothesis: a base that accumulates net buying delta breaks out more reliably. Tested with a **proxy delta** (close-position-in-range, normalized by volume) over the consolidation window. A/B on SP500 / 10y / frictions:
+
+| Delta filter | Trades | WR | Avg R | Max DD |
+|---|---|---|---|---|
+| OFF | 2914 | 42.7% | **+0.31** | −6.6% |
+| ON (proxy) | 2391 | 42.6% | **+0.28** | −5.9% |
+
+**Result: proxy delta-accumulation does NOT help — it slightly hurts** (fewer trades, flat WR, lower avg R). The close-position proxy carries no predictive info about breakout success. Open question: does *real* LTF delta differ? A Pine version with `request.security_lower_tf` real delta (`i_use_delta` toggle in `consolidation_breakout.pine`) is provided for TradingView Premium validation — given the proxy was unhelpful, expectation is low but the real-delta version is the honest final test.
+
 ### Concurrency sensitivity on consolidation_breakout
 
 | Max concurrent | Trades | Avg R | CAGR | Rejected (no capital) |

@@ -39,6 +39,9 @@ class Params:
     fund_ni_yoy_growth:  bool  = True
     fund_rev_yoy_growth: bool  = True
     fund_min_opm:        float = 10.0
+    # Delta-accumulation filter (proxy): require net buying during the base
+    use_delta_filter:    bool  = False
+    delta_min_ratio:     float = 0.0    # net delta / volume over the base must exceed this
     initial_equity: float = 100_000.0
 
 
@@ -117,8 +120,22 @@ def backtest(df: pd.DataFrame, params: Params = Params(),
     else:
         fund_ok = pd.Series(True, index=df.index)
 
+    # Delta-accumulation filter: net (proxy) delta accumulated over the base,
+    # normalized by volume. Proxy delta per bar = vol * (2*close - high - low) / range
+    # (close-position-in-range = buy/sell pressure). Measured over the same
+    # consol_len window as the box (prior bars, excluding the breakout bar).
+    if p.use_delta_filter:
+        rng_d       = (h - l).replace(0, np.nan)
+        bar_delta   = v * (2 * c - h - l) / rng_d
+        accum_delta = bar_delta.rolling(p.consol_len, min_periods=p.consol_len).sum().shift(1)
+        accum_vol   = v.rolling(p.consol_len, min_periods=p.consol_len).sum().shift(1)
+        delta_ratio = accum_delta / accum_vol
+        delta_ok    = delta_ratio > p.delta_min_ratio
+    else:
+        delta_ok = pd.Series(True, index=df.index)
+
     long_signal = (above_ma & macd_bull & breakout & valid_size & valid_wick &
-                   vol_ok & new_10wk_hi & natr_ok & stop_ok & fund_ok)
+                   vol_ok & new_10wk_hi & natr_ok & stop_ok & fund_ok & delta_ok)
 
     macd_cross_dn = (macd_line < sig_line) & (macd_line.shift(1) >= sig_line.shift(1))
 
