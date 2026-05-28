@@ -1,0 +1,59 @@
+The kNN Market Architecture [LuxAlgo] indicator is a professional-grade market structure framework that utilizes a k-nearest neighbors (kNN) machine learning classifier to validate price pivots across multiple time horizons. By integrating a dynamic detection engine, cumulative volume delta analysis, and a range-based volume profile, this tool provides a multi-layered hierarchical view of price action to identify high-probability reversal and breakout zones.
+
+🔶 USAGE
+
+The indicator identifies and classifies market structure into three distinct layers: Short-Term (ST), Medium-Term (MT), and Long-Term (LT). Unlike traditional pivot indicators that rely on static lookbacks, each point must pass a kNN similarity test based on relative volatility and volume features to be validated and plotted.
+
+🔹 Multi-Scale Bias Analysis
+Users can define which structural layer (ST, MT, or LT) dictates the overall market bias. When price is trading above the most recent validated high of the selected term, the candles and dashboard will reflect a bullish bias. Conversely, trading below the recent validated low indicates a bearish bias. This allows for seamless "top-down" analysis within a single chart view.
+
+🔹 The Delta Tank
+When a structural level is active (not yet breached), a "Delta Tank" label appears at the price line. This tool tracks the cumulative volume and delta (buying vs. selling pressure) since the level was formed.
+
+A green icon with a high fill percentage indicates aggressive buying defending a support level or attacking resistance.
+A red icon suggests selling pressure is mounting, potentially signaling an upcoming Break of Structure (BOS).
+The percentage value represents the delta-to-total-volume ratio, providing a metric for the "exhaustion" or "strength" of a specific level.
+
+
+🔹 Anchor Volume Profile
+The indicator includes a dynamic Volume Profile that anchors itself specifically to the current active structural range. This profile calculates volume distribution between the most recent validated High and Low of your chosen Bias Source, allowing you to see exactly where the most "fair value" was traded within the current trading range.
+
+🔶 ADVANTAGES OVER TRADITIONAL METHODS
+
+The kNN Market Architecture offers several significant improvements over standard market structure indicators:
+
+Noise Filtering via Machine Learning: Traditional pivot indicators plot every mathematical high/low within a window. The kNN classifier filters these by comparing the "signature" (volatility and volume) of the current point against historical successful pivots. If a pivot lacks the necessary confidence, it is ignored, leading to much cleaner charts.
+Volatility-Adjusted Detection: Most indicators use a fixed lookback (e.g., 10 bars). This script uses a dynamic engine that expands during high volatility and contracts during low volatility, ensuring the structure remains relevant regardless of market speed.
+Contextual Volume Data: While standard indicators only show price, this tool layers Volume Delta and Volume Profiles directly onto the structure points, providing the "why" behind price movements.
+
+
+🔶 DETAILS
+
+🔹 Auto-Adjust Sensitivity
+The core of the detection engine is its ability to adapt to changing market conditions. When "Auto-Adjust Sensitivity" is enabled, the script calculates a volatility ratio by comparing the current ATR to its long-term average. During periods of high volatility, the engine automatically expands the detection window. This ensures that the indicator requires more significant price movement to confirm a new structure point, preventing "false positives" during erratic price swings. In low-volatility environments, the window contracts, making the engine more sensitive to subtle structural shifts.
+
+🔹 kNN Validation Engine
+For every potential price pivot, the engine analyzes features such as Relative ATR and Relative Volume. It compares these features against a historical database of previous pivots. If the current point does not meet the "Confidence Threshold" (the average score of its k-nearest neighbors), it is discarded.
+
+🔶 SETTINGS
+
+🔹 Dynamic Engine
+Structure Sensitivity: Controls the base lookback for pivot detection.
+Auto-Adjust Sensitivity: Enables volatility-based scaling of the detection engine.
+
+
+🔹 kNN Classifier
+k-Nearest Neighbors: The number of historical neighbors to compare against the current pivot.
+Confidence Threshold: The minimum similarity score required to validate a structure point.
+
+
+🔹 Visual Hierarchy
+ST/MT/LT Toggles: Enables or disables the visibility of Short, Medium, and Long-term structures.
+Bias Source: Choose which term (Auto, LT, MT, ST) governs candle coloring and the Volume Profile.
+Color Candles by Bias: Toggles the gradient candle coloring based on the current range position.
+
+
+🔹 Volume Profile
+Show Volume Profile: Toggles the structural range-based profile.
+Profile Rows: Adjusts the vertical granularity (price bins) of the profile.
+Profile Width (%): Controls the horizontal scale of the profile.

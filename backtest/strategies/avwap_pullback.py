@@ -39,35 +39,54 @@ class Params:
     fund_positive_ni:    bool  = True
     fund_rev_yoy_growth: bool  = True
     fund_min_opm:        float = 0.0    # off by default; set 5+ to filter unprofitable growth
+    # VWAP deviation bands (Order Flow VWAP concept): require pullback to the
+    # lower sigma-band instead of just "near VWAP"
+    use_vwap_bands:  bool  = False
+    vwap_band_mult:  float = 2.0    # sigma multiplier for the lower band
+    vwap_band_lb:    int   = 30     # rolling window for the band VWAP (recent value)
     initial_equity:  float = 100_000.0
 
 
-def _anchored_vwap(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
-    """Return (avwap_series, anchor_low_series).
+def _anchored_vwap(df: pd.DataFrame, band_mult: float = 2.0):
+    """Return (avwap, anchor_low, lower_band) series.
 
-    Anchor = the running lowest low.  Resets cumulative pv/v when a new low is set.
+    Anchor = the running lowest low.  Resets cumulative stats on a new low.
+    Bands use the volume-weighted variance of (price - vwap), the same method
+    as TradingView's ta.vwap std-dev bands:
+        var = sum(p^2 v)/sum(v) - vwap^2 ; std = sqrt(var)
     """
     hlc3 = (df["high"] + df["low"] + df["close"]) / 3
     pv   = hlc3 * df["volume"]
+    pv2  = hlc3 * hlc3 * df["volume"]
     avwap_arr  = np.full(len(df), np.nan)
     anchor_arr = np.full(len(df), np.nan)
+    lower_arr  = np.full(len(df), np.nan)
     cum_pv = 0.0
     cum_v  = 0.0
+    cum_pv2 = 0.0
     cur_anchor_low = np.inf
     for i in range(len(df)):
         lo = float(df["low"].iloc[i])
         vol = float(df["volume"].iloc[i])
         if lo < cur_anchor_low:
             cur_anchor_low = lo
-            cum_pv = float(pv.iloc[i])
-            cum_v  = vol
+            cum_pv  = float(pv.iloc[i])
+            cum_v   = vol
+            cum_pv2 = float(pv2.iloc[i])
         else:
-            cum_pv += float(pv.iloc[i])
-            cum_v  += vol
+            cum_pv  += float(pv.iloc[i])
+            cum_v   += vol
+            cum_pv2 += float(pv2.iloc[i])
         if cum_v > 0:
-            avwap_arr[i] = cum_pv / cum_v
+            vw = cum_pv / cum_v
+            avwap_arr[i] = vw
+            var = max(cum_pv2 / cum_v - vw * vw, 0.0)
+            std = var ** 0.5
+            lower_arr[i] = vw - band_mult * std
         anchor_arr[i] = cur_anchor_low
-    return pd.Series(avwap_arr, index=df.index), pd.Series(anchor_arr, index=df.index)
+    return (pd.Series(avwap_arr, index=df.index),
+            pd.Series(anchor_arr, index=df.index),
+            pd.Series(lower_arr, index=df.index))
 
 
 def backtest(df: pd.DataFrame, params: Params = Params(),
@@ -83,14 +102,28 @@ def backtest(df: pd.DataFrame, params: Params = Params(),
     sma50  = sma(c, 50)
     sma200 = sma(c, 200)
     sma_t  = sma(c, p.trail_ma_len)
-    avwap, anchor_low = _anchored_vwap(df)
+    avwap, anchor_low, vwap_lower = _anchored_vwap(df, p.vwap_band_mult)
 
     uptrend     = (c > sma50) & (c > sma200) & (sma50 > sma200)
     above_avwap = c > avwap
 
-    # Pullback detection: did the low come within p.pullback_pct of avwap in last N bars?
-    pct_above_avwap = (l - avwap) / avwap * 100
-    pullback_touched = pct_above_avwap.rolling(p.pullback_lb, min_periods=1).min() <= p.pullback_pct
+    # Pullback detection: two modes
+    if p.use_vwap_bands:
+        # Rolling VWAP (recent value) + sigma band — reachable on a pullback,
+        # unlike the cycle-anchored VWAP whose lower band sits far below price.
+        n = p.vwap_band_lb
+        hlc3 = (h + l + c) / 3
+        cum_v   = v.rolling(n, min_periods=n).sum()
+        rvwap   = (hlc3 * v).rolling(n, min_periods=n).sum() / cum_v
+        rvar    = ((hlc3 * hlc3 * v).rolling(n, min_periods=n).sum() / cum_v) - rvwap * rvwap
+        rstd    = np.sqrt(rvar.clip(lower=0))
+        roll_lower = rvwap - p.vwap_band_mult * rstd
+        touched_band = (l <= roll_lower)
+        pullback_touched = touched_band.rolling(p.pullback_lb, min_periods=1).max().astype(bool)
+    else:
+        # Original: low came within p.pullback_pct of avwap in last N bars
+        pct_above_avwap = (l - avwap) / avwap * 100
+        pullback_touched = pct_above_avwap.rolling(p.pullback_lb, min_periods=1).min() <= p.pullback_pct
 
     bounce_candle = (c > o) & (c > c.shift(1)) & (c > h.shift(1))
 

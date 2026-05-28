@@ -1,0 +1,67 @@
+The Dynamic Delta FVG indicator provides a comprehensive analysis of Fair Value Gaps (FVGs) by integrating intra-bar volume delta to visualize the internal buying and selling pressure within price imbalances.
+
+🔶 USAGE
+
+The script identifies standard Fair Value Gaps and enhances them by splitting the visual representation into two distinct segments based on volume delta. This allows traders to see exactly where institutional aggressive orders were concentrated during the formation of the gap.
+
+Users can utilize this tool to:
+
+Identify high-probability FVGs where the volume delta aligns with the gap direction.
+Determine specific price levels within a gap that acted as the primary "point of control" for buyers or sellers.
+Monitor real-time sentiment through a dynamic dashboard that aggregates the delta of all active imbalances.
+Filter out insignificant market noise using ATR and volume-based threshold settings.
+
+
+🔹 Detailed Buyer/Seller Tags
+Each active FVG features a dynamic tag on the right edge displaying the specific percentage of buying (B) and selling (S) volume that occurred within that price range. The tag background color shifts based on the dominant force, providing an immediate visual cue of the gap's internal strength. These tags move dynamically as the boxes expand, ensuring they always remain at the current price action edge.
+
+🔹 Filter Overlapping
+When enabled, the script will automatically remove existing active FVGs that overlap with a new discovery. This ensures only the most recent "current" imbalance is displayed in a specific price zone, preventing visual clutter and focusing on the most relevant institutional levels.
+
+🔹 Mitigation Modes
+The script supports two mitigation modes to suit different trading styles:
+
+**Touch:** A gap is considered mitigated as soon as price enters the range.
+**Full Fill:** A gap remains active until price has completely traversed the entire range of the imbalance.
+
+
+🔶 DETAILS
+
+The indicator utilizes
+
+Pine Script®
+
+request.security_lower_tf()
+
+
+to fetch granular volume data from lower timeframes (e.g., 1-second data). This allows for a precise calculation of "Buy Volume" versus "Sell Volume". The split in the FVG box represents the ratio of these volumes. For example, if an FVG has 70% buying volume, the green segment will occupy 70% of the vertical height of the box, while the red segment occupies the remaining 30%.
+
+🔹 Aggregate Sentiment Dashboard
+The dashboard calculates market strength across all active imbalances rather than just categorizing by gap direction. This means if multiple bullish FVGs contain significant "absorbed" selling volume, the "Seller Strength" metric will accurately reflect this bearish pressure. The Net Sentiment is derived from the net difference between aggregate buyer and seller percentages across all active gaps.
+
+🔶 SETTINGS
+
+🔹 Detection Filters
+
+**Min Volume Threshold:** Multiplier for the 20-period average volume. Gaps forming on volume lower than this threshold are ignored.
+**Min ATR Magnitude:** Sets the minimum required size of the FVG relative to the current ATR.
+**Mitigation Mode:** Determines whether a touch or a full fill "closes" the gap.
+**Filter Overlapping:** When enabled, the script deletes older active gaps that overlap with new ones.
+
+
+🔹 Volume Delta Analysis
+
+**Delta Timeframe:** The lower timeframe used for volume calculations. Required for higher precision on 1m charts.
+
+
+🔹 Visuals
+
+**Max Active Gaps:** Limits the number of boxes displayed on the chart (Default: 10).
+**Buyer/Seller Color:** Customizable colors for the split segments within the FVG.
+**Show Mitigated Gaps:** When enabled, mitigated gaps remain on the chart with a faded appearance.
+
+
+🔹 Dashboard
+
+**Show Dashboard:** Toggles the real-time sentiment and imbalance summary table.
+**Position/Size:** Controls the UI placement and scale of the dashboard.

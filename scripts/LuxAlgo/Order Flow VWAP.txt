@@ -1,0 +1,45 @@
+The Order Flow VWAP Deviation indicator provides a comprehensive toolkit for analyzing market structure through volume-weighted price levels, liquidity zones, and order flow imbalances.
+
+It combines classic VWAP standard deviation bands with dynamic stop-run detection and localized volume profiles to identify high-probability reversal and expansion zones.
+
+🔶 USAGE
+
+The tool is designed for intraday and swing traders who focus on liquidity "sweeps" and mean reversion. By plotting significant pivot highs and lows (Stop Zones) alongside VWAP bands, the indicator highlights areas where institutional liquidity is likely resting.
+
+When price pierces these zones on high volume, the script flags a potential stop-run, signaling that a trend exhaustion or reversal may be imminent.
+
+🔹 Stop Zones and Liquidity
+
+The script tracks historical pivot points and extends them as dashed lines. When price crosses these lines with a volume surge (defined by the Stop Zone Volume Multiplier), it indicates that resting orders have been triggered.
+
+These events are marked with circles on the chart to alert the trader to a shift in order flow.
+
+🔹 Anchor Volume Profile
+
+A specialized Volume Profile anchors to a specific time range (e.g., New York Open). This profile appears on the right side of the chart, highlighting the Point of Control (POC) in yellow and high-volume "Stop Nodes" in orange.
+
+Each significant node displays a volume multiplier (e.g., 2.5x) and a buyer/seller bias (B/S) to show which side of the market is dominant at that price level.
+
+🔹 Inversion Fair Value Gaps (IFVGs)
+
+The indicator can optionally track Fair Value Gaps that have been "inverted." An IFVG occurs when a bearish gap is closed above or a bullish gap is closed below.
+
+These act as refreshed support or resistance levels and are visualized as boxes on the chart until they are mitigated by price action.
+
+🔶 DETAILS
+
+The script utilizes a proxy for delta volume, calculating the bias based on the relationship between the close and the high/low of each bar within the profile calculation.
+
+The Stop Zone logic uses a lookback period to ensure only significant structural pivots are considered, preventing chart clutter while focusing on major liquidity pools.
+
+🔶 SETTINGS
+
+VWAP Anchor: Determines the period for VWAP calculation (Session, Week, Month, or Year).
+Std. Dev Multiplier: Sets the distance for the upper and lower deviation bands.
+Pivot Lookback: The number of bars used to identify significant highs and lows for stop zones.
+Max Active Lines: Limits the number of horizontal liquidity levels displayed on the chart.
+Profile Rows: Adjusts the vertical granularity of the anchored Volume Profile.
+Anchor Time Range: Specifies the exact time (HHMM) used to start the volume collection for the profile.
+Stop Zone Volume Multiplier: Defines the threshold relative to average volume required to highlight a "Stop Node" in the profile.
+Show IFVGs: Toggles the visibility of Inversion Fair Value Gaps.
+IFVG Volatility Filter: A multiplier used to ensure only gaps formed by significant price moves are tracked.

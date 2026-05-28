@@ -114,6 +114,7 @@ uv run python -m backtest.runner --strategy minervini_sepa --universe sp500 --pe
 | **overvalued_growth_short** | expensive_software | 1d | 10y | 59 | 35.6% | +0.01 | ✅ insurance profile holds with frictions |
 | overvalued_growth_short | expensive_software | 1d | 2022 only | 18 | 44.4% | 0.00 | ✅ bear-period profitable in dollars (+$337) |
 | **avwap_pullback** *(2-bar aVWAP exit)* | sp500 | 1d | 10y | 483 | 44.9% | **+0.05** | 🟡 marginal — 2-bar exit barely helps (+0.01 R); entry quality is the issue |
+| avwap_pullback *(VWAP σ-bands ON)* | sp500 | 1d | 10y | 207 | **56.5%** | +0.06 | 🟡 +9pp WR & half the DD vs bands-off, but SAME avg R — risk-profile gain, not edge gain |
 
 ### Real-world expectancy estimates
 

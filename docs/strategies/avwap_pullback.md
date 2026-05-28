@@ -128,6 +128,21 @@ uv run python -m backtest.runner --strategy avwap_pullback --universe sp500 \
      --period 10y --interval 1d --slippage-bps 5 --commission 1
 ```
 
+## VWAP deviation bands pairing (Order Flow VWAP concept)
+
+Added an optional `use_vwap_bands` mode that pairs the Order Flow VWAP [LuxAlgo] σ-band concept with this strategy: instead of entering when price is merely "near" the anchored VWAP, require the pullback to reach a **rolling-VWAP lower σ-band** (statistically oversold relative to recent value).
+
+**Key implementation note:** the cycle-anchored VWAP's lower band sits far below price after a rally (unreachable → zero trades), so the band uses a *rolling* VWAP (recent N bars) which tracks current value and is reachable on a pullback. This mirrors why the LuxAlgo indicator uses session-anchored VWAP.
+
+### A/B result (SP500 / 10y / frictions)
+
+| Mode | Trades | Win rate | Avg R | Max DD |
+|---|---|---|---|---|
+| Bands OFF (default) | 479 | 47.6% | +0.06 | −0.7% |
+| Bands ON | 207 | **56.5%** | +0.06 | −0.3% |
+
+**Finding:** bands improve win rate +9pp and halve drawdown, but **avg R is unchanged** — a risk-profile improvement, not an edge improvement. Both remain ≈break-even (+0.06 R). Default is OFF (more trades, higher total profit at identical per-trade edge); turn ON if you prefer a higher win rate and smoother equity. Neither version is a standalone return engine.
+
 ## Pair with
 
 - **Use alongside** `consolidation_breakout.pine` and `minervini_sepa.pine` for diversified entry styles (breakout vs pullback)
