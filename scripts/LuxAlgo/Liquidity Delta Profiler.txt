@@ -1,0 +1,69 @@
+The Liquidity Delta Profiler indicator identifies major buy-side and sell-side liquidity levels and visualizes internal buyer/seller activity through volume delta-filled quadrants, providing a complete toolkit for analyzing liquidity sweeps and potential reversals.
+
+🔶 USAGE
+
+The indicator detects significant swing highs and lows to plot liquidity zones, representing areas where stop-loss orders or breakout orders are likely clustered.
+
+🔹 Volume Delta Quadrants
+
+Unlike standard liquidity indicators, this tool splits each zone into four horizontal quadrants. As price trades within these quadrants, the script calculates the volume delta (the difference between buying and selling pressure) for each specific section.
+
+Buy Delta Fill: Indicates aggressive buyers were more active in that specific price slice.
+Sell Delta Fill: Indicates aggressive sellers dominated that section.
+Intensity: The color's opacity represents the relative magnitude of the volume delta compared to other sections of the zone.
+
+
+🔹 Reversal Detection
+
+The script includes an advanced detection system that identifies unusual volume patterns during liquidity sweeps. These signals are plotted as bubbles with hoverable tooltips:
+
+ABS (Absorption): Occurs when aggressive market orders at the extreme edge of a zone are absorbed by large limit orders in the opposite direction.
+EXH (Exhaustion): Occurs when a sweep happens on very low relative volume, suggesting no follow-through.
+DIV (Divergence): Identified when high volume pushes into the edge of a zone (FOMO) but price fails to close outside the level.
+REJ (Snapback Rejection): Triggered when a sweep candle shows high delta in the opposite direction of the sweep and closes back inside the zone.
+
+
+🔹 Time-Based Performance Dashboard
+
+To evaluate signal reliability, the indicator includes a real-time dashboard that tracks the historical performance of each reversal signal type using a time-based validation logic.
+
+A "Win" is recorded if, within the Eval Window, the price reverses from the sweep and remains in profit (on the correct side of the signal entry) for a specific number of consecutive bars (Hold Time). This method filters for signals that generate sustained pressure rather than just temporary wicks.
+
+🔹 Zone Decay (Health)
+
+Active zones feature a "Health" percentage label. This tracks the cumulative volume traded within the zone relative to its capacity. As more volume is transacted at these levels, the liquidity is considered "consumed," and the percentage drops toward 0%.
+
+🔶 DETAILS
+
+The indicator utilizes a pivot-based detection system. When a swing high is confirmed, a Buy-Side Liquidity (BSL) zone is created; a swing low creates a Sell-Side Liquidity (SSL) zone.
+
+The script includes "Filter Overlaps" logic to ensure chart clarity. If a new, more significant pivot forms within the range of an existing active zone, the tool can automatically update to the most relevant level, preventing the clutter of multiple overlapping boxes.
+
+🔶 SETTINGS
+
+🔹 Main
+
+Pivot Length: Lookback/lookforward period for detecting swing highs and lows.
+Max Zones per Type: Maximum number of active and historical zones to keep on the chart.
+Show Swept Zones: Keeps zones visible with dashed outlines after they have been breached.
+Filter Overlapping Zones: Prevents the creation of new zones that overlap with existing active zones.
+
+
+🔹 Decay & Reversals
+
+Show Zone Decay: Toggles the health percentage labels.
+Zone Volume Capacity: Multiplier for average volume to determine how much volume a zone can absorb.
+Enable Reversal Detection: Toggles the signal bubbles for reversal patterns.
+
+
+🔹 Dashboard
+
+Show Dashboard: Toggles the performance tracking table.
+Eval Window (Bars): The maximum number of bars the script waits for a reversal to manifest.
+Hold Time (Bars): The number of consecutive bars price must stay in profit to be considered a successful reversal.
+Position/Size: Customizes the UI placement and scale of the dashboard.
+
+
+🔹 Style
+
+Colors: Customize colors for BSL/SSL outlines and the positive/negative volume delta fills.

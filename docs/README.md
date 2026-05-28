@@ -13,6 +13,7 @@ This folder explains each strategy and screener: what it does, why, and what to 
 | [Backside Reversion Short](strategies/backside_reversion_short.md) | `scripts/backside_reversion_short.pine` | Intraday | SHORT |
 | [Day 2 Continuation (Power Play)](strategies/day2_continuation.md) | (Python only so far) `backtest/strategies/day2_continuation.py` | Daily | LONG |
 | [MTF Structure + Value (hybrid)](strategies/mtf_structure_value.md) | `scripts/mtf_structure_value.pine` | Hourly+Daily | LONG |
+| [Liquidity Sweep Reversal (LTF-delta)](strategies/liquidity_sweep_reversal.md) | `scripts/liquidity_sweep_reversal.pine` | Intraday | LONG+SHORT |
 
 All three use **Van Tharp fixed-fractional 2.5% risk sizing** with a 25% notional ceiling. See each doc's *Position sizing* section.
 
