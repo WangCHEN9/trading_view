@@ -52,6 +52,22 @@ uv run python -m backtest.portfolio --strategy consolidation_breakout --universe
      --period 10y --interval 1wk --max-positions 6 --slippage-bps 5 --commission 1
 ```
 
+### Market-cap tier test (does edge survive in small/mid caps?)
+
+Hypothesis: order-flow / pattern edges survive better in less-efficient small caps. **Refuted.** All at 5bps + $1, 10y:
+
+| Strategy | Large (SP500) | Mid (SP400) | Small (SP600) |
+|---|---|---|---|
+| consolidation_breakout — avg R | **+0.30** | +0.17 | +0.06 |
+| consolidation_breakout — WR | 42.7% | 39.8% | 34.5% |
+| day2_continuation — avg R | +0.32 | — | +0.13 |
+
+Edge **decreases monotonically with smaller cap.** Price-pattern strategies (breakout/momentum) need the smooth, persistent trends + liquidity of large caps; small caps are noisier and gappier. Two compounding problems make small-cap reality even worse than shown:
+- **Survivorship bias is severe** — yfinance only has *current* S&P 600 members; the many small caps that delisted/went bankrupt are excluded, so +0.06 is optimistic.
+- **Real friction is higher** — at a realistic 20bps slippage, consolidation_breakout SP600 was only +0.03 R.
+
+**Verdict: keep these strategies in large caps.** The academic small-cap inefficiency premium requires holding through volatility, not timing mechanical patterns.
+
 ### Delta-accumulation filter on consolidation_breakout (Range Intelligence + Dynamic Delta FVG synthesis)
 
 Hypothesis: a base that accumulates net buying delta breaks out more reliably. Tested with a **proxy delta** (close-position-in-range, normalized by volume) over the consolidation window. A/B on SP500 / 10y / frictions:

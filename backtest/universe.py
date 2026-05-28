@@ -62,12 +62,13 @@ def get(name: str) -> list[str]:
     }
     if name in static:
         return static[name]
-    if name == "sp500":
-        syms = _read_list("sp500_yf.txt")
+    if name in ("sp500", "sp400", "sp600"):
+        fetch_hint = "backtest.fetch_sp500" if name == "sp500" else f"backtest.fetch_index --index {name}"
+        syms = _read_list(f"{name}_yf.txt")
         if not syms:
             raise RuntimeError(
-                "universes/sp500_yf.txt is missing or empty.  Run:\n"
-                "  uv run python -m backtest.fetch_sp500"
+                f"universes/{name}_yf.txt is missing or empty.  Run:\n"
+                f"  uv run python -m {fetch_hint}"
             )
         return syms
-    raise ValueError(f"Unknown universe '{name}'. Options: large25, momentum15, sp500")
+    raise ValueError(f"Unknown universe '{name}'. Options: large25, momentum15, expensive_software, sp500, sp400, sp600")

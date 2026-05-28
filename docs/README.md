@@ -98,6 +98,10 @@ All four use `ignore_invalid_symbol=true` so non-stock symbols (crypto/forex/ETF
 
 **Python backtest caveat:** The Python harness in `backtest/` does NOT replicate the fundamental filters — yfinance fundamental history is unreliable and not point-in-time. Pine backtests + live trading get the full filter; Python harness measures the **technical-only** edge as a lower bound on real performance.
 
+## ⭐ Discretionary Playbook — how to actually use this toolkit
+
+After testing everything, the durable conclusion is that no mechanical setup beats buy-and-hold SPY in large caps. The toolkit's real value is as a **disciplined funnel + risk framework for discretionary trading**. **[discretionary_playbook.md](discretionary_playbook.md)** is the operating manual: weekly routine, per-candidate review, execution/risk rules, what not to do, and honest expectations. Read it before trading real money.
+
 ## Backtest methodology — read before tuning
 
 See [backtest_methodology.md](backtest_methodology.md) for the full discussion of how to make backtests honest and avoid overfitting. The 10 practices to apply (and 10 traps to avoid) summarize down to: **fewer parameters, broader universe, longer history, harsher frictions** — the strategy that survives all four is worth trading.
