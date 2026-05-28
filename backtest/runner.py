@@ -28,6 +28,7 @@ STRATEGY_BENCHMARKS: dict[str, list[str]] = {
     "minervini_sepa":           ["SPY"],
     "overvalued_growth_short":  ["SPY", "IGV", "VIX"],
     "avwap_pullback":           [],
+    "day2_continuation":        ["SPY"],
 }
 
 # Long strategies that benefit from fundamental quality filter (yfinance data)
