@@ -1,0 +1,141 @@
+//@version=6
+strategy("Backside Reversion Short  [Assan S2 / Intraday]",
+     overlay               = true,
+     default_qty_type      = strategy.fixed,
+     default_qty_value     = 1,
+     calc_on_every_tick    = false,
+     pyramiding            = 0,
+     initial_capital       = 100000)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BACKSIDE MEAN-REVERSION SHORT  (Assan's Strategy 2)
+//
+// ⚠️  RUN THIS ON AN INTRADAY CHART (5-min or 15-min).  The whole point of the
+//     strategy is precise intraday entry timing — the daily-bar version has no
+//     edge (verified in the Python harness).  This script pulls daily context
+//     via request.security and executes on the intraday timeframe.
+//
+// THESIS: a parabolic stock extended far above its daily mean on climax volume
+// traps buyers.  A dead-cat bounce back into the "supply zone" that FAILS
+// (lower high + rejection, loses intraday VWAP) marks the momentum shift.
+// Short it, target reversion to the daily mean.
+//
+// Multi-timeframe (Assan aligns Daily -> Hourly -> 5/15-min):
+//   • DAILY:    overextension filter (close > X% above 50-DMA) + climax volume
+//   • INTRADAY: VWAP, supply-zone rejection, lower-high entry trigger
+//
+// RISK: stop above the intraday high of day; target = daily mean; 3:1 R:R min.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_ext_ma      = input.int  (50,   "Daily extension MA length", group="Daily Setup")
+i_ext_pct     = input.float(30.0, "Min % above daily MA (overextension)", group="Daily Setup")
+i_climax_mult = input.float(2.0,  "Climax volume × daily 50-day avg",     group="Daily Setup")
+
+i_rvol_min    = input.float(1.5,  "Min intraday RVOL on trigger",  group="Intraday Trigger")
+i_rvol_len    = input.int  (20,   "RVOL average length (bars)",    group="Intraday Trigger")
+i_zone_pct    = input.float(8.0,  "Supply-zone proximity (%)",     group="Intraday Trigger",
+     tooltip="Bounce must reach within this % of the day's high to count as a supply-zone test.")
+
+i_buffer_pct  = input.float(1.0,  "Stop buffer above HOD (%)",     group="Risk")
+i_max_stop    = input.float(15.0, "Max allowed stop %",            group="Risk")
+i_rr_min      = input.float(3.0,  "Min reward:risk",               group="Risk")
+i_risk_pct    = input.float(1.5,  "Risk % of account per trade",   minval=0.1, maxval=10.0, group="Risk")
+i_max_pos_pct = input.float(15.0, "Max position % of equity",      minval=1.0, maxval=100.0, group="Risk")
+
+// ─── Daily context (via request.security) ─────────────────────────────────────
+daily_close   = request.security(syminfo.tickerid, "D", close,           lookahead=barmerge.lookahead_off)
+daily_ma      = request.security(syminfo.tickerid, "D", ta.sma(close, i_ext_ma), lookahead=barmerge.lookahead_off)
+daily_vol     = request.security(syminfo.tickerid, "D", volume,          lookahead=barmerge.lookahead_off)
+daily_vol_avg = request.security(syminfo.tickerid, "D", ta.sma(volume, 50), lookahead=barmerge.lookahead_off)
+
+extended    = not na(daily_ma) and daily_close > daily_ma * (1 + i_ext_pct / 100)
+climax_vol  = not na(daily_vol_avg) and daily_vol > daily_vol_avg * i_climax_mult
+daily_setup = extended and climax_vol
+
+// ─── Intraday context ─────────────────────────────────────────────────────────
+vwap_intraday = ta.vwap(hlc3)
+rvol          = volume / ta.sma(volume, i_rvol_len)
+
+// High of current day (resets each session)
+var float hod = na
+is_new_day = ta.change(time("D")) != 0
+if is_new_day
+    hod := high
+else
+    hod := math.max(nz(hod, high), high)
+
+// Supply zone test: price bounced back to within i_zone_pct of HOD
+near_zone   = (hod - close) / hod * 100 <= i_zone_pct
+
+// Rejection trigger: lower high vs prior bar, close down, lost VWAP
+lower_high  = high < high[1]
+rejection   = close < open and close < close[1]
+lost_vwap   = close < vwap_intraday
+rvol_ok     = not na(rvol) and rvol >= i_rvol_min
+
+// ─── Stop / target / signal ───────────────────────────────────────────────────
+stop_at_entry = hod * (1 + i_buffer_pct / 100)
+target        = daily_ma                              // revert to the daily mean
+risk          = stop_at_entry - close
+reward        = close - target
+rr_ok         = risk > 0 and not na(target) and (reward / risk) >= i_rr_min
+stop_pct_ok   = (stop_at_entry - close) / close * 100 <= i_max_stop
+
+short_signal  = daily_setup and near_zone and lower_high and rejection and
+     lost_vwap and rvol_ok and rr_ok and stop_pct_ok
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+var float cur_stop = na
+
+in_pos = strategy.position_size < 0
+
+if not in_pos
+    cur_stop := na
+
+risk_per_share = stop_at_entry - close
+risk_dollars   = strategy.equity * i_risk_pct / 100
+qty_by_risk    = risk_per_share > 0 ? math.floor(risk_dollars / risk_per_share) : 0
+qty_by_cap     = close > 0 ? math.floor(strategy.equity * i_max_pos_pct / 100 / close) : 0
+trade_qty      = math.min(qty_by_risk, qty_by_cap)
+
+if short_signal and not in_pos and trade_qty > 0
+    strategy.entry("Short", strategy.short, qty=trade_qty)
+    cur_stop := stop_at_entry
+
+if in_pos
+    // Trail stop down to intraday swing highs (only lowers)
+    recent_high = ta.highest(high, 10)
+    if recent_high < cur_stop
+        cur_stop := recent_high
+    strategy.exit("Cover", from_entry="Short", stop=cur_stop, limit=target)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════════════════════════════════════════
+plot(vwap_intraday, "Intraday VWAP", color=color.blue, linewidth=1)
+plot(daily_ma,      "Daily " + str.tostring(i_ext_ma) + "MA (target)", color=color.orange, linewidth=2)
+plot(in_pos ? cur_stop : na, "Stop", color=color.red, style=plot.style_linebr, linewidth=2)
+plot(hod, "HOD", color=color.new(color.gray, 60), style=plot.style_stepline)
+
+bgcolor(daily_setup ? color.new(color.maroon, 90) : na, title="Daily setup active")
+
+plotshape(short_signal and not in_pos,
+     title="Short", style=shape.triangledown, location=location.abovebar,
+     color=color.red, text="SHORT", size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTES — VALIDATION REQUIRED
+// • This script is UNVERIFIED in the Python harness (no intraday data there).
+//   Backtest it in TradingView on a 5-min or 15-min chart of a stock that went
+//   parabolic (e.g. SMCI 2024, GME/AMC 2021, any recent squeeze name).
+// • TradingView intraday backtest depth is limited by your plan — you may only
+//   get a few months of 5-min history.  Test on several known blow-off events.
+// • Compare against the daily Python result (no edge): if the intraday version
+//   shows a real edge, that PROVES the edge was in the execution timeframe.
+// • request.security with lookahead_off avoids look-ahead bias — do not change.
+// • Shorting carries unlimited tail risk; squeeze names are dangerous. Keep
+//   risk % low (default 1.5%) and never override the stop.
+// ═══════════════════════════════════════════════════════════════════════════════

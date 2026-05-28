@@ -10,6 +10,7 @@ This folder explains each strategy and screener: what it does, why, and what to 
 | [Minervini SEPA](strategies/minervini_sepa.md) | `scripts/minervini_sepa.pine` | Daily | LONG |
 | [Overvalued Growth Breakdown Short](strategies/overvalued_growth_short.md) | `scripts/overvalued_growth_short.pine` | Daily | SHORT |
 | [Anchored VWAP Pullback](strategies/avwap_pullback.md) | `scripts/avwap_pullback.pine` | Daily | LONG |
+| [Backside Reversion Short](strategies/backside_reversion_short.md) | `scripts/backside_reversion_short.pine` | Intraday | SHORT |
 
 All three use **Van Tharp fixed-fractional 2.5% risk sizing** with a 25% notional ceiling. See each doc's *Position sizing* section.
 
