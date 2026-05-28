@@ -1,0 +1,251 @@
+//@version=6
+strategy("MTF Structure + Value Swing  [Daily HTF / Hourly entry]",
+     overlay               = true,
+     default_qty_type      = strategy.fixed,
+     default_qty_value     = 1,
+     calc_on_every_tick    = false,
+     pyramiding            = 0,
+     initial_capital       = 100000,
+     max_labels_count      = 100,
+     max_boxes_count       = 100)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MULTI-TIMEFRAME STRUCTURE + VALUE  (hybrid mechanical + discretionary)
+//
+// ⚠️  RUN ON THE HOURLY (1H) CHART.  Direction comes from the DAILY timeframe;
+//     execution is on the hourly.  TradingView Premium gives the intraday depth.
+//
+// WHAT THIS SCRIPT DOES (mechanical):
+//   • HTF direction  — daily market structure (HH/HL) + daily MA stack
+//   • Value zone     — anchored VWAP + approximated POC (rolling volume-by-price)
+//   • Demand zones   — hourly bases that preceded strong rallies (S&D)
+//   • Entry          — in a daily uptrend, pullback into demand/value, then an
+//                       hourly higher-low / bullish reversal (LTF structure shift)
+//
+// WHAT IT CANNOT DO (read these by EYE on your Premium chart before entry):
+//   • Footprint charts        — no order-flow data in Pine
+//   • True delta / delta divergence — Pine has total volume only, no signed delta
+//   • True Volume Profile POC — TV's VP indicator is not exposed to Pine; the POC
+//                                here is an APPROXIMATION (bar volume bucketed by
+//                                price), useful as a guide, not exact
+//
+// WORKFLOW: the script flags a setup + fires an alert and plots VWAP / approx
+// POC / demand zone.  You then confirm with footprint + delta on the chart and
+// take or skip the trade.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Inputs ───────────────────────────────────────────────────────────────────
+i_htf            = input.timeframe("D",  "Higher timeframe (direction)", group="Multi-Timeframe")
+i_htf_fast       = input.int  (20,  "HTF fast MA",   group="Multi-Timeframe")
+i_htf_slow       = input.int  (50,  "HTF slow MA",   group="Multi-Timeframe")
+
+i_pivot_len      = input.int  (5,   "Pivot length (structure)",  group="Market Structure")
+i_rally_pct      = input.float(8.0, "Min rally % to mark a demand zone", group="Supply/Demand",
+     tooltip="A base low that preceded a rally of at least this % becomes a demand zone.")
+i_zone_lookback  = input.int  (60,  "Bars to keep demand zones",  group="Supply/Demand")
+
+i_vp_lookback    = input.int  (80,  "Volume-profile lookback (bars)", group="Value (approx POC)")
+i_vp_buckets     = input.int  (24,  "Volume-profile buckets",        group="Value (approx POC)", minval=6, maxval=50)
+i_value_tol      = input.float(2.0, "Pullback proximity to value (%)", group="Value (approx POC)",
+     tooltip="Entry requires price within this % of anchored VWAP OR the approx POC OR inside a demand zone.")
+
+i_buffer_pct     = input.float(1.0, "Stop buffer below zone/low (%)", group="Risk")
+i_max_stop       = input.float(12.0,"Max allowed stop %",            group="Risk")
+i_rr_min         = input.float(2.0, "Min reward:risk",               group="Risk")
+i_trail_len      = input.int  (10,  "Higher-low trail lookback",     group="Risk")
+i_risk_pct       = input.float(2.0, "Risk % of account per trade",   minval=0.1, maxval=10.0, group="Risk")
+i_max_pos_pct    = input.float(20.0,"Max position % of equity",      minval=1.0, maxval=100.0, group="Risk")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HTF DIRECTION (Daily)
+// ═══════════════════════════════════════════════════════════════════════════════
+htf_close    = request.security(syminfo.tickerid, i_htf, close,                    lookahead=barmerge.lookahead_off)
+htf_fast_ma  = request.security(syminfo.tickerid, i_htf, ta.sma(close, i_htf_fast), lookahead=barmerge.lookahead_off)
+htf_slow_ma  = request.security(syminfo.tickerid, i_htf, ta.sma(close, i_htf_slow), lookahead=barmerge.lookahead_off)
+
+// HTF swing structure: most recent confirmed higher low intact
+htf_phl      = request.security(syminfo.tickerid, i_htf, ta.pivotlow(low, 3, 3),   lookahead=barmerge.lookahead_off)
+var float htf_last_low  = na
+var float htf_prev_low  = na
+if not na(htf_phl)
+    htf_prev_low := htf_last_low
+    htf_last_low := htf_phl
+htf_hl_structure = not na(htf_last_low) and not na(htf_prev_low) and htf_last_low > htf_prev_low
+
+htf_uptrend = not na(htf_fast_ma) and not na(htf_slow_ma) and
+     htf_close > htf_slow_ma and htf_fast_ma > htf_slow_ma
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VALUE — anchored VWAP + approximated POC (rolling volume-by-price)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Anchor the VWAP at the running lowest low (cycle bottom proxy)
+var float anchor_low   = na
+var bool  anchor_reset = false
+anchor_reset := false
+if na(anchor_low) or low < anchor_low
+    anchor_low   := low
+    anchor_reset := true
+avwap = ta.vwap(hlc3, anchor_reset)
+
+// Approximated POC: bucket bar volume by price over the lookback window.
+// NOT a true volume profile (no traded-at-price data in Pine) — a guide only.
+f_approx_poc(lookback, buckets) =>
+    hi = ta.highest(high, lookback)
+    lo = ta.lowest(low, lookback)
+    rng = hi - lo
+    var vb = array.new_float(buckets, 0.0)
+    for b = 0 to buckets - 1
+        array.set(vb, b, 0.0)
+    if rng > 0
+        for k = 0 to lookback - 1
+            price = (high[k] + low[k] + close[k]) / 3
+            idx = int((price - lo) / rng * (buckets - 1))
+            idx := math.max(0, math.min(buckets - 1, idx))
+            array.set(vb, idx, array.get(vb, idx) + volume[k])
+    poc_idx = 0
+    max_v   = 0.0
+    for b = 0 to buckets - 1
+        vv = array.get(vb, b)
+        if vv > max_v
+            max_v := vv
+            poc_idx := b
+    rng > 0 ? lo + (poc_idx + 0.5) / buckets * rng : close
+
+approx_poc = f_approx_poc(i_vp_lookback, i_vp_buckets)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEMAND ZONES (hourly S&D)
+// A demand zone = a swing-low base that preceded a rally >= i_rally_pct.
+// We store the most recent demand zone's high/low boundaries.
+// ═══════════════════════════════════════════════════════════════════════════════
+ph = ta.pivothigh(high, i_pivot_len, i_pivot_len)
+pl = ta.pivotlow (low,  i_pivot_len, i_pivot_len)
+
+// Stateful ta.* computed at top level (never inside if-blocks — see gotchas)
+hh_since_pivot = ta.highest(high, i_pivot_len)
+lowest_trail   = ta.lowest(low,  i_trail_len)
+
+var float dz_low   = na   // demand zone lower boundary
+var float dz_high  = na   // demand zone upper boundary
+var int   dz_bar   = na
+
+// When a swing low forms and price subsequently rallied, mark the zone.
+if not na(pl)
+    pivot_low_price = pl
+    if (hh_since_pivot - pivot_low_price) / pivot_low_price * 100 >= i_rally_pct
+        dz_low  := pivot_low_price
+        dz_high := pivot_low_price * (1 + i_rally_pct / 200)  // zone band = half the rally trigger
+        dz_bar  := bar_index
+
+zone_active = not na(dz_low) and not na(dz_bar) and (bar_index - dz_bar) <= i_zone_lookback
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENTRY LOGIC  (hourly)
+// In a daily uptrend, price pulls back to value/zone, then LTF structure shifts up.
+// ═══════════════════════════════════════════════════════════════════════════════
+near_vwap   = not na(avwap)      and math.abs(close - avwap) / avwap * 100 <= i_value_tol
+near_poc    = not na(approx_poc) and math.abs(close - approx_poc) / approx_poc * 100 <= i_value_tol
+in_demand   = zone_active and low <= dz_high and low >= dz_low * (1 - i_buffer_pct / 100)
+at_value    = near_vwap or near_poc or in_demand
+
+// LTF structure shift back up: bullish reversal bar after the pullback
+ltf_higher_low = not na(pl) and pl > nz(pl[1], pl)
+reversal_bar   = close > open and close > close[1]
+
+// Stop below the demand zone (or recent swing low if no active zone)
+stop_basis    = in_demand ? dz_low : lowest_trail
+stop_at_entry = stop_basis * (1 - i_buffer_pct / 100)
+stop_pct      = (close - stop_at_entry) / close * 100
+risk          = close - stop_at_entry
+// Target: a measured move to next structure (proxy: i_rr_min × risk)
+target        = close + risk * i_rr_min
+rr_ok         = risk > 0 and stop_pct <= i_max_stop
+
+htf_ok        = htf_uptrend and (htf_hl_structure or htf_close > htf_fast_ma)
+
+long_signal   = htf_ok and at_value and reversal_bar and rr_ok
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+var float cur_stop = na
+var label last_label = na
+
+in_pos = strategy.position_size > 0
+
+if not in_pos
+    cur_stop := na
+
+risk_per_share = close - stop_at_entry
+risk_dollars   = strategy.equity * i_risk_pct / 100
+qty_by_risk    = risk_per_share > 0 ? math.floor(risk_dollars / risk_per_share) : 0
+qty_by_cap     = close > 0 ? math.floor(strategy.equity * i_max_pos_pct / 100 / close) : 0
+trade_qty      = math.min(qty_by_risk, qty_by_cap)
+
+if long_signal and not in_pos and trade_qty > 0
+    strategy.entry("Long", strategy.long, qty=trade_qty)
+    cur_stop := stop_at_entry
+
+if in_pos
+    // Higher-low trail: raise stop to recent swing low (only ratchets up)
+    if lowest_trail > cur_stop
+        cur_stop := lowest_trail
+    strategy.exit("Exit", from_entry="Long", stop=cur_stop, limit=target)
+    // Exit if HTF turns down
+    if not htf_uptrend
+        strategy.close("Long", comment="HTF trend lost")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLOTS — value & zones (so you can overlay footprint/delta by eye)
+// ═══════════════════════════════════════════════════════════════════════════════
+plot(avwap,      "Anchored VWAP", color=color.blue,   linewidth=2)
+plot(approx_poc, "Approx POC",    color=color.purple, linewidth=2, style=plot.style_circles)
+
+// Demand zone box
+var box dz_box = na
+if not na(dz_low) and zone_active and barstate.islast
+    box.delete(dz_box)
+    dz_box := box.new(left=dz_bar, top=dz_high, right=bar_index + 5, bottom=dz_low,
+         bgcolor=color.new(color.green, 85), border_color=color.new(color.green, 50))
+
+bgcolor(htf_uptrend ? color.new(color.green, 95) : na, title="HTF uptrend")
+
+plotshape(long_signal and not in_pos,
+     title="Long setup", style=shape.triangleup, location=location.belowbar,
+     color=color.lime, text="SETUP", size=size.small)
+
+plot(in_pos ? cur_stop : na, "Stop", color=color.red, style=plot.style_linebr, linewidth=2)
+
+f_str(v) => na(v) ? "n/a" : str.tostring(math.round(v, 2))
+
+if long_signal and not in_pos
+    label.delete(last_label)
+    last_label := label.new(bar_index, low,
+         text  = "SETUP — confirm w/ footprint+delta"                       +
+                 "\nEntry ~ " + f_str(close)                                +
+                 "\nStop: "   + f_str(stop_at_entry) + " (" + f_str(stop_pct) + "%)" +
+                 "\nTarget: " + f_str(target) + "  (" + f_str(i_rr_min) + ":1)" +
+                 "\nVWAP: "   + f_str(avwap) + "  POC: " + f_str(approx_poc) +
+                 "\nShares: " + str.tostring(trade_qty),
+         style = label.style_label_up, color = color.new(color.green, 20),
+         textcolor = color.white, size = size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALERTS (the hybrid handoff to your discretionary footprint/delta check)
+// ═══════════════════════════════════════════════════════════════════════════════
+alertcondition(long_signal,
+     title   = "MTF Setup — confirm with order flow",
+     message = "{{ticker}} {{interval}} — MTF structure+value LONG setup. "
+             + "Check footprint + delta divergence before entry.")
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTES — VALIDATION REQUIRED
+// • Run on 1H chart; direction is pulled from Daily via request.security.
+// • UNVERIFIED in the Python harness (intraday + multi-TF + approx-POC arrays
+//   are not reproducible there).  Backtest in TradingView Premium.
+// • The approx POC is a Pine bucketed-volume estimate, NOT TradingView's real
+//   Volume Profile.  Treat it as a guide; trust the real VP indicator by eye.
+// • Footprint + delta divergence are your DISCRETIONARY confirmation — the
+//   script intentionally does not (cannot) automate them.
+// • request.security uses lookahead_off — do not change (avoids look-ahead bias).
+// ═══════════════════════════════════════════════════════════════════════════════
