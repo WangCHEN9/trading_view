@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `Lookback Mode` toggle to the Money Flow Profile indicator so the profile range can be defined by a calendar window (Today / 3 Days / 1 Week / 1 Month) in addition to the existing fixed bar count.
+**Goal:** Add a `Lookback Mode` selector to the Money Flow Profile indicator so the profile range can be defined by the current session ("Today") or a rolling number of days (1–28), in addition to the existing fixed bar count. Default mode is "Today".
 
 **Architecture:** The script's entire downstream logic depends on a single integer bar-offset `rpLN`. We compute `rpLN` per mode on the last bar only, then move the profile's price-range scan (`pLST`/`pHST`/`pSTP`) into that same last-bar block (it previously relied on `rpLN` being a compile-time constant). All rendering below stays untouched, so identical ranges reproduce the current output byte-for-byte.
 
@@ -62,7 +62,7 @@ git commit -m "Raise Money Flow Profile history cap to 5000 bars"
 
 ---
 
-### Task 2: Replace the fixed-lookback input with mode + period + fixed inputs
+### Task 2: Replace the fixed-lookback input with mode + days + fixed inputs
 
 **Files:**
 - Modify: `scripts/LuxAlgo/00_money_flow_profile.pine:15-16`
@@ -79,9 +79,9 @@ rpLN  := last_bar_index > rpLN ? rpLN - 1 : last_bar_index
 Replace with:
 
 ```pine
-rpMODE   = input.string('Fixed Bars', '  Lookback Mode', options = ['Fixed Bars', 'Time Period'], group = rpGR, display = disp)
-rpPERIOD = input.string('1 Week', '  Time Period', options = ['Today', '3 Days', '1 Week', '1 Month'], group = rpGR, tooltip = 'Used when Lookback Mode = Time Period.\n - Today = bars since the current session opened\n - 1 Month = 28 days (4 weeks); not drawn below the 5-minute timeframe', display = disp)
-rpFIX    = input.int(200, '  Fixed Lookback (bars)', minval = 10, maxval = 5000, step = 10, group = rpGR, tooltip = 'Used when Lookback Mode = Fixed Bars.', display = disp)
+rpMODE = input.string('Today', '  Lookback Mode', options = ['Fixed Bars', 'Today', 'Days'], group = rpGR, tooltip = 'Today = bars since the current session opened. Days = a rolling N-day window. Fixed Bars = a fixed bar count.', display = disp)
+rpDAYS = input.int(7, '  Lookback Days', minval = 1, maxval = 28, group = rpGR, tooltip = 'Used when Lookback Mode = Days. Rolling window of N calendar days (max 28). On small timeframes the window clamps to available history.', display = disp)
+rpFIX  = input.int(200, '  Fixed Lookback (bars)', minval = 10, maxval = 5000, step = 10, group = rpGR, tooltip = 'Used when Lookback Mode = Fixed Bars.', display = disp)
 ```
 
 Note: this removes the global `rpLN` symbol. `rpLN` becomes a `var` computed in Task 4; nothing between here and Task 4 references it (all other uses are inside the `barstate.islast` block). The script will NOT compile cleanly until Task 4 is done — that is expected; Tasks 2–4 are one logical change. Commit at Step 3 anyway to keep diffs small ONLY if you are using a branch; otherwise proceed straight to Task 3 without the on-chart check.
@@ -94,7 +94,7 @@ Confirm by reading the file that the three new inputs sit in the `rpGR` group an
 
 ```bash
 git add scripts/LuxAlgo/00_money_flow_profile.pine
-git commit -m "Add Lookback Mode / Time Period inputs to Money Flow Profile"
+git commit -m "Add Lookback Mode / Days inputs to Money Flow Profile"
 ```
 
 ---
@@ -169,22 +169,16 @@ var float pSTP = na
 
 if barstate.islast
     // 1) resolve the bar offset for the active mode
-    if rpMODE == 'Time Period'
-        if rpPERIOD == 'Today'
-            rpLN := last_bar_index - tdStartIdx
-        else
-            int periodMs = switch rpPERIOD
-                '3 Days'  => 3  * 86400000
-                '1 Week'  => 7  * 86400000
-                '1 Month' => 28 * 86400000
-                => 0
-            int target  = time - periodMs
-            int maxScan = math.min(bar_index, 4999)
-            rpLN := 0
-            for i = 1 to maxScan
-                if na(time[i]) or time[i] < target
-                    break
-                rpLN := i
+    if rpMODE == 'Today'
+        rpLN := last_bar_index - tdStartIdx
+    else if rpMODE == 'Days'
+        int target  = time - rpDAYS * 86400000
+        int maxScan = math.min(bar_index, 4999)
+        rpLN := 0
+        for i = 1 to maxScan
+            if na(time[i]) or time[i] < target
+                break
+            rpLN := i
     else
         rpLN := last_bar_index > rpFIX ? rpFIX - 1 : last_bar_index
 
@@ -200,30 +194,23 @@ if barstate.islast
 
     // 3) row height
     pSTP := (pHST - pLST) / rpNR
-
-// hide "1 Month" on sub-5-minute timeframes (28 days cannot fit there)
-bool hide1M = rpMODE == 'Time Period' and rpPERIOD == '1 Month' and timeframe.in_seconds() < 300
 ```
 
-- [ ] **Step 3: Update the render guard (was line 170)**
+Note: `rpDAYS * 86400000` — `rpDAYS` ≤ 28, so the product ≤ 2,419,200,000, which fits Pine's 64-bit `int`. No overflow concern.
 
-Change:
+- [ ] **Step 3: Confirm the render guard (was line 170) is unchanged**
+
+The existing guard already does what we need — no edit required:
 
 ```pine
 if barstate.islast and not na(nzV) and not timeframe.isseconds and rpLN > 0 and pSTP > 0 and nzV > 0
 ```
 
-to:
+`rpLN > 0` skips degenerate windows (e.g. Today on a daily chart). Everything inside this `if` (down to end of file) stays exactly as-is.
 
-```pine
-if barstate.islast and not na(nzV) and not timeframe.isseconds and not hide1M and rpLN > 0 and pSTP > 0 and nzV > 0
-```
+- [ ] **Step 4: Verify (TradingView) — compiles and Fixed-Bars matches original**
 
-Everything inside this `if` (down to end of file) stays exactly as-is.
-
-- [ ] **Step 4: Verify (TradingView) — default behaves like before**
-
-Paste full file → Add to chart on a liquid symbol (e.g. NASDAQ:AAPL, 1h). Defaults are `Fixed Bars` / 200. Expected: compiles with no errors; profile looks identical to the original script's Fixed 200 output.
+Paste full file → Add to chart on a liquid symbol (e.g. NASDAQ:AAPL, 1h). The default mode is now `Today`, so first confirm a session profile draws. Then set Mode = `Fixed Bars`, Fixed Lookback = `200` and confirm the profile is identical to the original script's Fixed 200 output (the original is the prior git revision of this file).
 
 - [ ] **Step 5: Commit**
 
@@ -234,29 +221,29 @@ git commit -m "Resolve lookback range dynamically per mode on the last bar"
 
 ---
 
-### Task 5: Verify behavior — parity + each period + guards
+### Task 5: Verify behavior — parity + Today + Days + guards
 
 **Files:** none (manual verification on TradingView).
 
 - [ ] **Step 1: Parity check (the key correctness test)**
 
-On NASDAQ:AAPL, 1h:
-1. Mode = `Fixed Bars`, Fixed Lookback = `200`. Note the profile (POC line level, profile high/low — enable "Profile Price Levels" to read exact values).
-2. Switch Mode = `Time Period`, Period = whichever window currently spans 200 bars. To force an exact match instead of guessing: temporarily set Fixed Lookback so its bar count equals a Time window you can reproduce, OR compare by reading the "Number of bars" tooltip on the profile high/low label in each mode.
+On NASDAQ:AAPL, 1h, enable "Profile Price Levels" so the profile high/low labels show exact values + a "Number of bars" tooltip:
+1. Mode = `Fixed Bars`, Fixed Lookback = `200`. Read profile high, profile low, POC level, and the tooltip's "Number of bars".
+2. Mode = `Days`, adjust `Lookback Days` until the "Number of bars" tooltip matches the Fixed run's bar count.
 
-Expected: when the **Number of bars** tooltip matches between the two modes, the profile high, profile low, and POC are identical.
+Expected: when the **Number of bars** matches between the two modes, profile high, profile low, and POC are identical. (Confirms the offset-parity convention.)
 
-- [ ] **Step 2: Each time window renders**
+- [ ] **Step 2: Today renders the current session**
 
-Mode = `Time Period`. On a 1h chart cycle Period through `Today`, `3 Days`, `1 Week`, `1 Month`. Expected: each redraws with a progressively wider price range and larger bar count (check the profile-high tooltip "Number of bars"). `Today` should cover only the current session's bars.
+Mode = `Today` on a 5m or 15m intraday chart. Expected: profile covers only bars since the current session opened; the "Number of bars" tooltip ≈ bars elapsed in today's session.
 
-- [ ] **Step 3: "Today" on a daily chart draws nothing**
+- [ ] **Step 3: Days window scales and clamps**
 
-Switch the chart to `1D`, Mode = `Time Period`, Period = `Today`. Expected: no profile drawn (session-open == last bar ⇒ `rpLN` 0 ⇒ guarded out). This is intended.
+Mode = `Days`. On a 1h chart sweep `Lookback Days` = 1 / 3 / 7 / 28. Expected: each redraws with a wider range / larger bar count. Then switch to 1m and set Days = 28: expected it still draws (no error), with "Number of bars" capped near 5000 — confirming silent clamp, not a hide.
 
-- [ ] **Step 4: "1 Month" hidden below 5-minute**
+- [ ] **Step 4: "Today" on a daily chart draws nothing**
 
-Mode = `Time Period`, Period = `1 Month`. Set chart to `1m` then `3m`: expected no profile. Set chart to `5m` then `15m`: expected profile draws. Confirms `hide1M` (`timeframe.in_seconds() < 300`).
+Switch the chart to `1D`, Mode = `Today`. Expected: no profile drawn (session-open == last bar ⇒ `rpLN` 0 ⇒ guarded out). This is intended.
 
 - [ ] **Step 5: Fixed mode unchanged**
 
@@ -270,7 +257,7 @@ If all pass, note it in the final summary to the user. If any fail, STOP and deb
 
 ## Self-Review
 
-- **Spec coverage:** mode toggle (Task 2) ✓; Today = session open (Tasks 3, 4 Step 2) ✓; 3D/1W/1M counting with 28-day month (Task 4 Step 2) ✓; offset-parity convention (Task 4 Step 2 comment + Task 5 Step 1) ✓; max_bars_back→5000 (Task 1) ✓; clamp to available history (Task 4 Step 2 clamp) ✓; hide 1M below 5-min (Task 4 Steps 2–3, Task 5 Step 4) ✓; seconds-timeframe skip preserved (guard kept in Task 4 Step 3) ✓.
+- **Spec coverage:** mode selector `Fixed Bars`/`Today`/`Days` default `Today` (Task 2) ✓; Today = session open (Tasks 3, 4 Step 2) ✓; Days counting, 1–28 (Task 2 input + Task 4 Step 2) ✓; offset-parity convention (Task 4 Step 2 comment + Task 5 Step 1) ✓; max_bars_back→5000 (Task 1) ✓; clamp to available history, no hide rule (Task 4 Step 2 clamp + Task 5 Step 3) ✓; seconds-timeframe skip preserved (guard kept in Task 4 Step 3) ✓.
 - **Placeholder scan:** none — all code shown in full.
-- **Type/name consistency:** `rpMODE`, `rpPERIOD`, `rpFIX`, `rpLN`, `pLST`, `pHST`, `pSTP`, `tdStartIdx`, `hide1M` used identically across tasks. `rpLN`/`pLST`/`pHST`/`pSTP` declared `var` once (Task 4) and read in the existing render block. Old `rpLN` input symbol fully removed (Task 2).
-- **Note vs spec:** spec said clamp `[1, …]`; plan clamps lower bound to `0` so that `Today`-on-daily and too-short windows fall through the existing `rpLN > 0` guard (no degenerate 2-bar profile). This is the correct realization of the spec's "guarded out" intent.
+- **Type/name consistency:** `rpMODE`, `rpDAYS`, `rpFIX`, `rpLN`, `pLST`, `pHST`, `pSTP`, `tdStartIdx` used identically across tasks. No `rpPERIOD`/`hide1M` remain. `rpLN`/`pLST`/`pHST`/`pSTP` declared `var` once (Task 4) and read in the existing render block. Old `rpLN` input symbol fully removed (Task 2).
+- **Clamp vs spec:** both spec and plan clamp the lower bound to `0` so `Today`-on-daily and too-short windows fall through the existing `rpLN > 0` guard (no degenerate profile).
