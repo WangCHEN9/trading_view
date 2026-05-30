@@ -19,3 +19,6 @@ backtest/results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Personal trade logs
+my_trades/
