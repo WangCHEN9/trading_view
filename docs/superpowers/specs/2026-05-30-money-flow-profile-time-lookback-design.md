@@ -29,13 +29,22 @@ list per timeframe — instead the render is skipped (see guards).
 
 ## Computing `rpLN` (bar count) — all resolved on the last bar
 
+**Convention:** `rpLN` is a bar **offset**, not a cardinality. It equals
+`(number of bars in window) - 1`, and the script scans offsets `0..rpLN`
+(i.e. `rpLN + 1` bars). All modes MUST follow this so that identical ranges
+yield identical `rpLN` and therefore byte-identical output to the current
+Fixed-Bars method.
+
 - **Fixed Bars** → unchanged: `last_bar_index > rpFIX ? rpFIX - 1 : last_bar_index`.
+  ("200" → `rpLN = 199` → 200 bars scanned.)
 - **Today** → track session start globally:
   `var int tdStartIdx`; `if session.isfirstbar => tdStartIdx := bar_index`.
   Then `rpLN = last_bar_index - tdStartIdx`.
 - **3 Days / 1 Week / 1 Month** → `target = time - N*86400000` ms
-  (N = 3 / 7 / 30; month approximated as 30 days). Walk back on the last bar
-  while `time[i] >= target` (cap scan at 4999), `rpLN = count`.
+  (N = 3 / 7 / 28; month = 28 days = exactly 4 weeks). Walk back on the last bar,
+  storing the **offset** of the furthest in-window bar:
+  `for i = 1 to min(bar_index, 4999): if not na(time[i]) and time[i] >= target => rpLN := i, else break`.
+  (`rpLN` ends as the largest offset still inside the window = bar count − 1.)
 - Clamp final `rpLN` to `[1, min(last_bar_index, 4999)]`.
 
 ## Refactor (required)
